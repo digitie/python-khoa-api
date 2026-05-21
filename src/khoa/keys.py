@@ -12,12 +12,7 @@ from ._convert import normalize_service_key
 from .exceptions import KhoaAuthError
 
 DATA_GO_KR_ENV_NAMES: Final = (
-    "KHOA_DATA_GO_KR_SERVICE_KEY",
-    "KHOA_SERVICE_KEY",
     "DATA_GO_KR_SERVICE_KEY",
-    "PUBLIC_DATA_SERVICE_KEY",
-    "TRIPMATE_DATA_GO_SERVICE_KEY",
-    "KHOA_API_KEY",
 )
 KHOA_GO_KR_ENV_NAMES: Final = (
     "KHOA_DIRECT_SERVICE_KEY",

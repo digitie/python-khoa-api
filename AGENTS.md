@@ -25,7 +25,7 @@
 - 범용 호출은 `KhoaClient.fetch()`가 담당하고, 안정적으로 모델링한 응답은 별도 typed helper와 Pydantic 모델로 제공합니다.
 - Python 지원 기준은 `pyproject.toml`의 `requires-python`을 따릅니다.
 - 기본 테스트는 실제 네트워크 호출 없이 동작해야 합니다.
-- 실제 API 테스트는 `PYKHOA_RUN_LIVE=1`과 `KHOA_SERVICE_KEY`가 있을 때만 실행합니다.
+- 실제 API 테스트는 `PYKHOA_RUN_LIVE=1`과 `DATA_GO_KR_SERVICE_KEY`가 있을 때만 실행합니다.
 
 ## Provider API 사용 원칙
 
@@ -167,7 +167,7 @@ python -m mypy src/khoa
 실제 API 검증:
 
 ```bash
-PYKHOA_RUN_LIVE=1 KHOA_SERVICE_KEY=<approved service key> python -m pytest -m live
+PYKHOA_RUN_LIVE=1 DATA_GO_KR_SERVICE_KEY=<approved service key> python -m pytest -m live
 ```
 
 실제 API 키는 환경변수로만 전달합니다. 명령 기록, 문서, 커밋 메시지에 키를 남기지 않습니다.

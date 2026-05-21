@@ -121,8 +121,7 @@ def test_constructor_strips_service_key_clipboard_whitespace(fake_client_factory
 
 
 def test_from_env_strips_primary_key_and_skips_blank_values(monkeypatch):
-    monkeypatch.setenv("KHOA_SERVICE_KEY", " \n ")
-    monkeypatch.setenv("KHOA_API_KEY", " \n ENV_\tKEY ")
+    monkeypatch.setenv("DATA_GO_KR_SERVICE_KEY", " \n ENV_\tKEY ")
 
     client = KhoaClient.from_env(retries=0)
 
@@ -131,13 +130,9 @@ def test_from_env_strips_primary_key_and_skips_blank_values(monkeypatch):
 
 def test_constructor_loads_data_go_key_from_default_env_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("KHOA_DATA_GO_KR_SERVICE_KEY", raising=False)
-    monkeypatch.delenv("KHOA_SERVICE_KEY", raising=False)
     monkeypatch.delenv("DATA_GO_KR_SERVICE_KEY", raising=False)
-    monkeypatch.delenv("PUBLIC_DATA_SERVICE_KEY", raising=False)
-    monkeypatch.delenv("KHOA_API_KEY", raising=False)
     (tmp_path / ".env").write_text(
-        "KHOA_DATA_GO_KR_SERVICE_KEY=' FILE_ KEY '\n",
+        "DATA_GO_KR_SERVICE_KEY=' FILE_ KEY '\n",
         encoding="utf-8",
     )
 
@@ -147,11 +142,10 @@ def test_constructor_loads_data_go_key_from_default_env_file(tmp_path, monkeypat
 
 
 def test_service_key_loader_supports_source_specific_keys(tmp_path, monkeypatch):
-    monkeypatch.delenv("KHOA_DATA_GO_KR_SERVICE_KEY", raising=False)
     monkeypatch.delenv("KHOA_DIRECT_SERVICE_KEY", raising=False)
     env_file = tmp_path / ".env"
     env_file.write_text(
-        "KHOA_DATA_GO_KR_SERVICE_KEY=DATA_KEY\n"
+        "DATA_GO_KR_SERVICE_KEY=DATA_KEY\n"
         "KHOA_DIRECT_SERVICE_KEY= DIRECT_ KEY \n",
         encoding="utf-8",
     )
@@ -411,7 +405,7 @@ def test_api_catalog_contains_human_readable_dataset_names():
     assert roms["data_source"] == "data.go.kr"
     assert roms["endpoint"] == "roms/GetRomsApiService"
     assert roms["service_key_url"].endswith("/15142227/openapi.do")
-    assert "KHOA_DATA_GO_KR_SERVICE_KEY" in roms["service_key_env_names"]
+    assert roms["service_key_env_names"] == ["DATA_GO_KR_SERVICE_KEY"]
     assert roms["required_params"] == ["ymin", "ymax", "xmin", "xmax"]
 
 
@@ -500,10 +494,7 @@ def test_first_raises_no_data(fake_client_factory):
 
 def test_env_constructor_errors(monkeypatch):
     names = (
-        "KHOA_SERVICE_KEY",
-        "KHOA_API_KEY",
         "DATA_GO_KR_SERVICE_KEY",
-        "PUBLIC_DATA_SERVICE_KEY",
     )
     for name in names:
         monkeypatch.delenv(name, raising=False)

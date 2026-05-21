@@ -23,7 +23,7 @@ assertion mode는 `snapshot`, `schema_only`, `required_fields`, `count`입니다
 live test는 data.go.kr 실제 서비스를 호출하므로 명시적으로 켤 때만 실행합니다.
 
 ```bash
-PYKHOA_RUN_LIVE=1 KHOA_SERVICE_KEY=... python -m pytest -m live
+PYKHOA_RUN_LIVE=1 DATA_GO_KR_SERVICE_KEY=... python -m pytest -m live
 ```
 
 현재 live test가 확인하는 엔드포인트는 아래와 같습니다.

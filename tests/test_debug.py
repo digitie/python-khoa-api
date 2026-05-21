@@ -102,7 +102,7 @@ def test_debug_fetch_returns_debug_run(fake_client_factory):
 
 
 def test_debug_fetch_captures_errors_without_raising(monkeypatch):
-    monkeypatch.delenv("KHOA_SERVICE_KEY", raising=False)
+    monkeypatch.delenv("DATA_GO_KR_SERVICE_KEY", raising=False)
     client = KhoaClient(api_key="TEST_KEY", retries=0)
 
     run = client.debug_fetch("dt_recent")

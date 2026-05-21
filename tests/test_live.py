@@ -14,9 +14,9 @@ RUN_LIVE = os.getenv("PYKHOA_RUN_LIVE") == "1"
 def live_client() -> KhoaClient:
     if not RUN_LIVE:
         pytest.skip("set PYKHOA_RUN_LIVE=1 to call real KHOA servers")
-    key = os.getenv("KHOA_SERVICE_KEY")
+    key = os.getenv("DATA_GO_KR_SERVICE_KEY")
     if not key:
-        pytest.skip("KHOA_SERVICE_KEY is not set")
+        pytest.skip("DATA_GO_KR_SERVICE_KEY is not set")
     return KhoaClient(key)
 
 

@@ -168,5 +168,5 @@ Streamlit 의존성, preset/history 저장소, diff UI, report export는 Web UI
 `service_key_url` 기반의 서비스키 신청 링크를 표시합니다.
 
 서비스키 입력칸을 비워두면 예제 앱은 `data_source`에 맞춰 환경변수와 로컬 `.env`에서
-키를 읽습니다. data.go.kr 서비스는 `KHOA_DATA_GO_KR_SERVICE_KEY`, KHOA 직접 endpoint는
+키를 읽습니다. data.go.kr 서비스는 `DATA_GO_KR_SERVICE_KEY`, KHOA 직접 endpoint는
 `KHOA_DIRECT_SERVICE_KEY`를 우선 사용합니다.

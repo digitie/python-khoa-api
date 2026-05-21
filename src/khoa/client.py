@@ -156,7 +156,7 @@ class KhoaClient:
         )
         if not key:
             raise KhoaAuthError(
-                "api_key is required. Pass api_key=... or set KHOA_SERVICE_KEY.",
+                "api_key is required. Pass api_key=... or set DATA_GO_KR_SERVICE_KEY.",
                 failure_kind="auth",
             )
         self.service_key = key
@@ -205,7 +205,7 @@ class KhoaClient:
     @classmethod
     def from_env(
         cls,
-        name: str = "KHOA_SERVICE_KEY",
+        name: str = "DATA_GO_KR_SERVICE_KEY",
         *,
         fallback_names: tuple[str, ...] = DEFAULT_ENV_NAMES[1:],
         env_file: str | PathLike[str] | None = ".env",

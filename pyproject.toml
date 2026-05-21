@@ -70,5 +70,5 @@ testpaths = ["tests"]
 addopts = "-ra"
 pythonpath = ["src"]
 markers = [
-  "live: tests that call the real KHOA ODMI services and require KHOA_SERVICE_KEY",
+  "live: tests that call the real KHOA ODMI services and require DATA_GO_KR_SERVICE_KEY",
 ]

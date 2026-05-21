@@ -64,12 +64,12 @@ asyncio.run(main())
 자동으로 제거합니다.
 
 ```env
-KHOA_DATA_GO_KR_SERVICE_KEY=...
+DATA_GO_KR_SERVICE_KEY=...
 KHOA_DIRECT_SERVICE_KEY=...
 VWORLD_API_KEY=...
 ```
 
-`KHOA_DATA_GO_KR_SERVICE_KEY`는 data.go.kr ODMI 호출에 쓰고,
+`DATA_GO_KR_SERVICE_KEY`는 data.go.kr ODMI 호출에 쓰고,
 `KHOA_DIRECT_SERVICE_KEY`는 `beach_search()` 같은 KHOA 직접 endpoint에 씁니다.
 
 자주 쓰는 KHOA 파라미터는 snake-case 별칭도 받을 수 있습니다.
@@ -283,7 +283,7 @@ live test는 실제 data.go.kr KHOA ODMI 서비스를 호출하므로 승인된 
 필요합니다.
 
 ```bash
-PYKHOA_RUN_LIVE=1 KHOA_SERVICE_KEY=... python -m pytest -m live
+PYKHOA_RUN_LIVE=1 DATA_GO_KR_SERVICE_KEY=... python -m pytest -m live
 ```
 
 data.go.kr가 HTTP 403을 반환하면 게이트웨이에는 도달했지만 해당 KHOA ODMI
