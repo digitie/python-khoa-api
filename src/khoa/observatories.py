@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import importlib
 import json
+import math
 import re
 import zlib
 from collections.abc import Mapping
@@ -18,16 +19,6 @@ from os import PathLike
 from typing import Any, Final, Protocol, cast
 
 import requests
-from kraddr.base import (
-    Address,
-    AddressRegion,
-    JibunAddress,
-    LegalDongCode,
-    PlaceCoordinate,
-    RoadNameAddress,
-    RoadNameAddressCode,
-    RoadNameCode,
-)
 
 from .exceptions import KhoaParseError, KhoaRequestError, KhoaServerError
 from .models import Observatory
@@ -644,18 +635,19 @@ def _lookup_vworld_address_fields(
     require_road_address: bool,
 ) -> dict[str, Any]:
     merged: dict[str, Any] = {}
-    first_match: tuple[PlaceCoordinate, float, str] | None = None
+    first_match: tuple[float, float, float, str] | None = None
     found_parcel = False
     found_road = False
 
-    for coordinate, distance_m, match_type in _nearby_lookup_points(
-        observatory.coordinate,
+    for latitude, longitude, distance_m, match_type in _nearby_lookup_points(
+        observatory.latitude,
+        observatory.longitude,
         search_offsets_degrees,
     ):
         try:
             payload = client.reverse_geocode_latlon(
-                coordinate.lat,
-                coordinate.lon,
+                latitude,
+                longitude,
                 type="both",
                 zipcode=True,
                 simple=False,
@@ -673,7 +665,7 @@ def _lookup_vworld_address_fields(
         fields = _extract_vworld_address_fields(payload)
         if fields:
             if first_match is None:
-                first_match = (coordinate, distance_m, match_type)
+                first_match = (latitude, longitude, distance_m, match_type)
             if not found_parcel and (
                 fields.get("legal_dong_code") or fields.get("parcel_address")
             ):
@@ -702,64 +694,17 @@ def _lookup_vworld_address_fields(
                 break
 
     if merged and first_match is not None:
-        coordinate, distance_m, match_type = first_match
-        legal_dong_code = cast(str | None, merged.get("legal_dong_code"))
-        road_address_code = cast(str | None, merged.get("road_address_code"))
-        road_name_code = cast(str | None, merged.get("road_name_code"))
-        parcel_address = cast(str | None, merged.get("parcel_address"))
-        road_address = cast(str | None, merged.get("road_address"))
-        detail_address = cast(str | None, merged.get("detail_address"))
-        zipcode = cast(str | None, merged.get("zipcode"))
-        legal_dong = (
-            LegalDongCode(code=legal_dong_code) if legal_dong_code is not None else None
-        )
-        road_address_management_code = (
-            RoadNameAddressCode(code=road_address_code)
-            if road_address_code is not None
-            else None
-        )
-        road_name_management_code = (
-            RoadNameCode(code=road_name_code) if road_name_code is not None else None
-        )
-        region = (
-            AddressRegion.from_legal_dong_code(legal_dong)
-            if legal_dong is not None
-            else None
-        )
-        jibun = (
-            JibunAddress(
-                address=parcel_address,
-                legal_dong_code=legal_dong,
-                postal_code=zipcode,
-            )
-            if legal_dong is not None or parcel_address is not None
-            else None
-        )
-        road_name = (
-            RoadNameAddress(
-                address=road_address,
-                road_name_code=road_name_management_code,
-                road_name_address_code=road_address_management_code,
-                building_name=detail_address,
-                postal_code=zipcode,
-            )
-            if (
-                road_address_code is not None
-                or road_name_code is not None
-                or road_address is not None
-            )
-            else None
-        )
-        address = Address(
-            region=region,
-            jibun=jibun,
-            road_name=road_name,
-            postal_code=zipcode,
-            detail_address=detail_address,
-        )
+        latitude, longitude, distance_m, match_type = first_match
         return {
-            "address": address,
-            "address_coordinate": coordinate,
+            "legal_dong_code": cast(str | None, merged.get("legal_dong_code")),
+            "road_address_code": cast(str | None, merged.get("road_address_code")),
+            "road_name_code": cast(str | None, merged.get("road_name_code")),
+            "parcel_address": cast(str | None, merged.get("parcel_address")),
+            "road_address": cast(str | None, merged.get("road_address")),
+            "detail_address": cast(str | None, merged.get("detail_address")),
+            "zipcode": cast(str | None, merged.get("zipcode")),
+            "address_latitude": latitude,
+            "address_longitude": longitude,
             "address_distance_m": round(distance_m, 3),
             "address_match_type": match_type,
             "address_source": "vworld",
@@ -999,10 +944,11 @@ def _first_text(*values: object) -> str | None:
 
 
 def _nearby_lookup_points(
-    coordinate: PlaceCoordinate,
+    latitude: float,
+    longitude: float,
     offsets_degrees: tuple[float, ...],
-) -> tuple[tuple[PlaceCoordinate, float, str], ...]:
-    points: list[tuple[PlaceCoordinate, float, str]] = []
+) -> tuple[tuple[float, float, float, str], ...]:
+    points: list[tuple[float, float, float, str]] = []
     seen: set[tuple[float, float]] = set()
     for offset in offsets_degrees:
         if offset < 0:
@@ -1021,23 +967,39 @@ def _nearby_lookup_points(
                 (-offset, -offset),
             )
         )
-        ring: list[tuple[PlaceCoordinate, float, str]] = []
+        ring: list[tuple[float, float, float, str]] = []
         for lat_delta, lon_delta in candidates:
-            candidate = PlaceCoordinate(
-                lat=coordinate.lat + lat_delta,
-                lon=coordinate.lon + lon_delta,
-            )
-            lat = candidate.lat
-            lon = candidate.lon
+            lat = latitude + lat_delta
+            lon = longitude + lon_delta
             key = (round(lat, 7), round(lon, 7))
             if key in seen:
                 continue
             seen.add(key)
-            distance_m = coordinate.distance_to_m(candidate)
+            distance_m = _distance_m(latitude, longitude, lat, lon)
             match_type = "exact" if distance_m == 0 else "nearby"
-            ring.append((candidate, distance_m, match_type))
+            ring.append((lat, lon, distance_m, match_type))
         points.extend(sorted(ring, key=lambda item: item[1]))
     return tuple(points)
+
+
+def _distance_m(
+    latitude: float,
+    longitude: float,
+    target_latitude: float,
+    target_longitude: float,
+) -> float:
+    """두 WGS84 좌표 사이의 근사 거리를 미터 단위로 계산합니다."""
+
+    radius_m = 6_371_008.8
+    lat1 = math.radians(latitude)
+    lat2 = math.radians(target_latitude)
+    delta_lat = lat2 - lat1
+    delta_lon = math.radians(target_longitude - longitude)
+    haversine = (
+        math.sin(delta_lat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2) ** 2
+    )
+    return 2 * radius_m * math.asin(math.sqrt(haversine))
 
 
 def _is_vworld_not_found(exc: Exception) -> bool:
