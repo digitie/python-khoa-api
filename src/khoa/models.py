@@ -6,16 +6,6 @@ from collections.abc import Mapping
 from datetime import date, datetime
 from typing import Any, Generic, TypeVar
 
-from kraddr.base import (
-    Address,
-    AddressRegion,
-    JibunAddress,
-    LegalDongCode,
-    PlaceCoordinate,
-    RoadNameAddress,
-    RoadNameAddressCode,
-    RoadNameCode,
-)
 from pydantic import BaseModel, ConfigDict, Field
 
 from ._convert import strip_or_none, to_datetime_or_none, to_float_or_none, to_int_or_none
@@ -44,213 +34,94 @@ class ResponseContext(KhoaModel):
     collected_at: datetime
 
 
-class Observatory(KhoaModel):
-    """KHOA 포털 관측소/지점 목록의 한 항목."""
+class AddressFields(KhoaModel):
+    """주소 보강 결과를 외부 모델 없이 직접 보존하는 공통 필드."""
 
-    id: str
-    name: str
-    coordinate: PlaceCoordinate
-    data_type: str | None = None
-    address: Address | None = None
-    address_coordinate: PlaceCoordinate | None = None
+    legal_dong_code: str | None = None
+    road_address_code: str | None = None
+    road_name_code: str | None = None
+    parcel_address: str | None = None
+    road_address: str | None = None
+    detail_address: str | None = None
+    zipcode: str | None = None
+    address_latitude: float | None = None
+    address_longitude: float | None = None
     address_distance_m: float | None = None
     address_match_type: str | None = None
     address_source: str | None = None
-    raw: dict[str, Any] = Field(default_factory=dict)
 
-    @property
-    def latitude(self) -> float:
-        """호환성을 위해 제공하는 위도 값."""
 
-        return self.coordinate.lat
+class RequiredLocationFields(AddressFields):
+    """필수 WGS84 좌표를 float 필드로 보존하는 공통 모델."""
 
-    @property
-    def longitude(self) -> float:
-        """호환성을 위해 제공하는 경도 값."""
-
-        return self.coordinate.lon
+    latitude: float
+    longitude: float
 
     @property
     def lat(self) -> float:
         """KHOA 포털 원문 필드명에 맞춘 위도 별칭."""
 
-        return self.coordinate.lat
+        return self.latitude
 
     @property
     def lon(self) -> float:
         """KHOA 포털 원문 필드명에 맞춘 경도 별칭."""
 
-        return self.coordinate.lon
+        return self.longitude
+
+
+class OptionalLocationFields(AddressFields):
+    """선택 WGS84 좌표를 float 필드로 보존하는 공통 모델."""
+
+    latitude: float | None = None
+    longitude: float | None = None
 
     @property
-    def address_latitude(self) -> float | None:
-        """주소 조회에 사용한 보정 좌표의 위도입니다."""
+    def lat(self) -> float | None:
+        """KHOA 포털 원문 필드명에 맞춘 위도 별칭."""
 
-        return self.address_coordinate.lat if self.address_coordinate is not None else None
-
-    @property
-    def address_longitude(self) -> float | None:
-        """주소 조회에 사용한 보정 좌표의 경도입니다."""
-
-        return self.address_coordinate.lon if self.address_coordinate is not None else None
+        return self.latitude
 
     @property
-    def legal_dong_code(self) -> str | None:
-        """주소의 법정동코드입니다."""
+    def lon(self) -> float | None:
+        """KHOA 포털 원문 필드명에 맞춘 경도 별칭."""
 
-        return self.address.legal_dong_code if self.address is not None else None
+        return self.longitude
 
-    @property
-    def road_address_code(self) -> str | None:
-        """도로명주소관리번호 26자리 코드입니다."""
 
-        road_name = self.address.road_name if self.address is not None else None
-        code = road_name.road_name_address_code if road_name is not None else None
-        return code.code if code is not None else None
+class Observatory(RequiredLocationFields):
+    """KHOA 포털 관측소/지점 목록의 한 항목."""
 
-    @property
-    def road_name_code(self) -> str | None:
-        """도로명코드 12자리 값입니다."""
-
-        road_name = self.address.road_name if self.address is not None else None
-        code = road_name.effective_road_name_code if road_name is not None else None
-        return code.code if code is not None else None
-
-    @property
-    def parcel_address(self) -> str | None:
-        """지번주소 문자열입니다."""
-
-        jibun = self.address.jibun if self.address is not None else None
-        return jibun.address if jibun is not None else None
-
-    @property
-    def road_address(self) -> str | None:
-        """도로명주소 문자열입니다."""
-
-        road_name = self.address.road_name if self.address is not None else None
-        return road_name.address if road_name is not None else None
-
-    @property
-    def detail_address(self) -> str | None:
-        """상세주소 문자열입니다."""
-
-        if self.address is None:
-            return None
-        if self.address.detail_address is not None:
-            return self.address.detail_address
-        road_name = self.address.road_name
-        return road_name.building_name if road_name is not None else None
-
-    @property
-    def zipcode(self) -> str | None:
-        """우편번호입니다."""
-
-        return self.address.effective_postal_code if self.address is not None else None
+    id: str
+    name: str
+    data_type: str | None = None
+    raw: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
     def from_raw(cls, row: Mapping[str, Any]) -> Observatory:
         """KHOA 포털 관측소 원문 행을 모델로 변환합니다."""
 
-        coordinate_value = row.get("coordinate")
-        if isinstance(coordinate_value, PlaceCoordinate):
-            coordinate = coordinate_value
-        elif isinstance(coordinate_value, Mapping):
-            coordinate = PlaceCoordinate.model_validate(coordinate_value)
-        else:
-            latitude = to_float_or_none(row.get("lat"))
-            longitude = to_float_or_none(row.get("lon"))
-            if latitude is None or longitude is None:
-                raise ValueError("KHOA observatory row requires lat/lon")
-            coordinate = PlaceCoordinate(lat=latitude, lon=longitude)
+        latitude, longitude = _coordinates_from_row(row)
+        if latitude is None or longitude is None:
+            raise ValueError("KHOA observatory row requires lat/lon")
 
-        address_coordinate: PlaceCoordinate | None
-        address_coordinate_value = row.get("address_coordinate")
-        if isinstance(address_coordinate_value, PlaceCoordinate):
-            address_coordinate = address_coordinate_value
-        elif isinstance(address_coordinate_value, Mapping):
-            address_coordinate = PlaceCoordinate.model_validate(address_coordinate_value)
-        else:
-            address_latitude = to_float_or_none(row.get("address_latitude"))
-            address_longitude = to_float_or_none(row.get("address_longitude"))
-            address_coordinate = (
-                PlaceCoordinate(lat=address_latitude, lon=address_longitude)
-                if address_latitude is not None and address_longitude is not None
-                else None
-            )
-
-        address: Address | None
-        address_value = row.get("address")
-        if isinstance(address_value, Address):
-            address = address_value
-        elif isinstance(address_value, Mapping):
-            address = Address.model_validate(address_value)
-        else:
-            legal_dong_code = _row_text(row, "legal_dong_code", "legalDongCode", "bjdCode")
-            road_address_code = _row_text(row, "road_address_code", "roadAddressCode")
-            road_name_code = _row_text(row, "road_name_code", "roadNameCode", "rnMgtSn")
-            parcel_address = _row_text(row, "parcel_address", "parcelAddress")
-            road_address = _row_text(row, "road_address", "roadAddress")
-            detail_address = _row_text(row, "detail_address", "detailAddress")
-            zipcode = _row_text(row, "zipcode", "zip_code", "zipCode")
-            legal_dong = (
-                LegalDongCode(code=legal_dong_code) if legal_dong_code is not None else None
-            )
-            road_address_management_code = (
-                RoadNameAddressCode(code=road_address_code)
-                if road_address_code is not None
-                else None
-            )
-            road_name_management_code = (
-                RoadNameCode(code=road_name_code) if road_name_code is not None else None
-            )
-            region = (
-                AddressRegion.from_legal_dong_code(legal_dong)
-                if legal_dong is not None
-                else None
-            )
-            jibun = (
-                JibunAddress(
-                    address=parcel_address,
-                    legal_dong_code=legal_dong,
-                    postal_code=zipcode,
-                )
-                if legal_dong is not None or parcel_address is not None
-                else None
-            )
-            road_name = (
-                RoadNameAddress(
-                    address=road_address,
-                    road_name_code=road_name_management_code,
-                    road_name_address_code=road_address_management_code,
-                    building_name=detail_address,
-                    postal_code=zipcode,
-                )
-                if (
-                    road_address_code is not None
-                    or road_name_code is not None
-                    or road_address is not None
-                )
-                else None
-            )
-            address = (
-                Address(
-                    region=region,
-                    jibun=jibun,
-                    road_name=road_name,
-                    postal_code=zipcode,
-                    detail_address=detail_address,
-                )
-                if any((region, jibun, road_name, zipcode, detail_address))
-                else None
-            )
+        address_latitude, address_longitude = _address_coordinates_from_row(row)
 
         return cls(
             id=str(row["id"]),
             name=str(row["name"]),
             data_type=strip_or_none(row.get("data_type")),
-            coordinate=coordinate,
-            address=address,
-            address_coordinate=address_coordinate,
+            latitude=latitude,
+            longitude=longitude,
+            legal_dong_code=_address_text(row, "legal_dong_code", "legalDongCode", "bjdCode"),
+            road_address_code=_address_text(row, "road_address_code", "roadAddressCode"),
+            road_name_code=_address_text(row, "road_name_code", "roadNameCode", "rnMgtSn"),
+            parcel_address=_address_text(row, "parcel_address", "parcelAddress"),
+            road_address=_address_text(row, "road_address", "roadAddress"),
+            detail_address=_address_text(row, "detail_address", "detailAddress"),
+            zipcode=_address_text(row, "zipcode", "zip_code", "zipCode", "postal_code"),
+            address_latitude=address_latitude,
+            address_longitude=address_longitude,
             address_distance_m=to_float_or_none(row.get("address_distance_m")),
             address_match_type=_row_text(row, "address_match_type", "addressMatchType"),
             address_source=_row_text(row, "address_source", "addressSource"),
@@ -302,7 +173,8 @@ class OceanBeachInfo(KhoaModel):
     link_name: str | None = None
     image_url: str | None = None
     emergency_contact: str | None = None
-    coordinate: PlaceCoordinate | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
 
     @property
@@ -315,13 +187,13 @@ class OceanBeachInfo(KhoaModel):
     def lat(self) -> float | None:
         """위도 별칭."""
 
-        return self.coordinate.lat if self.coordinate is not None else None
+        return self.latitude
 
     @property
     def lon(self) -> float | None:
         """경도 별칭."""
 
-        return self.coordinate.lon if self.coordinate is not None else None
+        return self.longitude
 
     @classmethod
     def from_raw(cls, row: Mapping[str, Any]) -> OceanBeachInfo:
@@ -331,11 +203,6 @@ class OceanBeachInfo(KhoaModel):
         name = _required_row_text(row, "staNm", "beachName", "name")
         latitude = to_float_or_none(row.get("lat"))
         longitude = to_float_or_none(row.get("lon"))
-        coordinate = (
-            PlaceCoordinate(lat=latitude, lon=longitude)
-            if latitude is not None and longitude is not None
-            else None
-        )
         return cls(
             num=_row_text(row, "num"),
             sido_name=sido_name,
@@ -348,113 +215,19 @@ class OceanBeachInfo(KhoaModel):
             link_name=_row_text(row, "linkNm"),
             image_url=_row_text(row, "beachImg"),
             emergency_contact=_row_text(row, "linkTel"),
-            coordinate=coordinate,
+            latitude=latitude,
+            longitude=longitude,
             raw=dict(row),
         )
 
 
-class BeachIndexPlace(KhoaModel):
+class BeachIndexPlace(RequiredLocationFields):
     """해수욕장 하나와 그 장소에 속한 해수욕지수 예보 묶음."""
 
     id: str
     name: str
-    coordinate: PlaceCoordinate
     forecasts: tuple[BeachIndexForecast, ...]
-    address: Address | None = None
-    address_coordinate: PlaceCoordinate | None = None
-    address_distance_m: float | None = None
-    address_match_type: str | None = None
-    address_source: str | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
-
-    @property
-    def latitude(self) -> float:
-        """위도 값입니다."""
-
-        return self.coordinate.lat
-
-    @property
-    def longitude(self) -> float:
-        """경도 값입니다."""
-
-        return self.coordinate.lon
-
-    @property
-    def lat(self) -> float:
-        """KHOA 원문 필드명에 맞춘 위도 별칭."""
-
-        return self.coordinate.lat
-
-    @property
-    def lon(self) -> float:
-        """KHOA 원문 필드명에 맞춘 경도 별칭."""
-
-        return self.coordinate.lon
-
-    @property
-    def address_latitude(self) -> float | None:
-        """주소 조회에 사용한 보정 좌표의 위도입니다."""
-
-        return self.address_coordinate.lat if self.address_coordinate is not None else None
-
-    @property
-    def address_longitude(self) -> float | None:
-        """주소 조회에 사용한 보정 좌표의 경도입니다."""
-
-        return self.address_coordinate.lon if self.address_coordinate is not None else None
-
-    @property
-    def legal_dong_code(self) -> str | None:
-        """주소의 법정동코드입니다."""
-
-        return self.address.legal_dong_code if self.address is not None else None
-
-    @property
-    def road_address_code(self) -> str | None:
-        """도로명주소관리번호 26자리 코드입니다."""
-
-        road_name = self.address.road_name if self.address is not None else None
-        code = road_name.road_name_address_code if road_name is not None else None
-        return code.code if code is not None else None
-
-    @property
-    def road_name_code(self) -> str | None:
-        """도로명코드 12자리 값입니다."""
-
-        road_name = self.address.road_name if self.address is not None else None
-        code = road_name.effective_road_name_code if road_name is not None else None
-        return code.code if code is not None else None
-
-    @property
-    def parcel_address(self) -> str | None:
-        """지번주소 문자열입니다."""
-
-        jibun = self.address.jibun if self.address is not None else None
-        return jibun.address if jibun is not None else None
-
-    @property
-    def road_address(self) -> str | None:
-        """도로명주소 문자열입니다."""
-
-        road_name = self.address.road_name if self.address is not None else None
-        return road_name.address if road_name is not None else None
-
-    @property
-    def detail_address(self) -> str | None:
-        """상세주소 문자열입니다."""
-
-        if self.address is None:
-            return None
-        if self.address.detail_address is not None:
-            return self.address.detail_address
-        road_name = self.address.road_name
-        return road_name.building_name if road_name is not None else None
-
-    @property
-    def zipcode(self) -> str | None:
-        """우편번호입니다."""
-
-        return self.address.effective_postal_code if self.address is not None else None
 
 
 class BeachSearchObservation(KhoaModel):
@@ -481,46 +254,14 @@ class BeachSearchObservation(KhoaModel):
         )
 
 
-class BeachSearchResult(KhoaModel):
+class BeachSearchResult(OptionalLocationFields):
     """KHOA `beach/search.do` 응답 DTO."""
 
     id: str
     name: str
     obs_post_name: str | None = None
-    coordinate: PlaceCoordinate | None = None
     observations: tuple[BeachSearchObservation, ...]
-    address: Address | None = None
-    address_coordinate: PlaceCoordinate | None = None
-    address_distance_m: float | None = None
-    address_match_type: str | None = None
-    address_source: str | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
-
-    @property
-    def lat(self) -> float | None:
-        """위도 별칭."""
-
-        return self.coordinate.lat if self.coordinate is not None else None
-
-    @property
-    def lon(self) -> float | None:
-        """경도 별칭."""
-
-        return self.coordinate.lon if self.coordinate is not None else None
-
-    @property
-    def parcel_address(self) -> str | None:
-        """지번주소 문자열입니다."""
-
-        jibun = self.address.jibun if self.address is not None else None
-        return jibun.address if jibun is not None else None
-
-    @property
-    def road_address(self) -> str | None:
-        """도로명주소 문자열입니다."""
-
-        road_name = self.address.road_name if self.address is not None else None
-        return road_name.address if road_name is not None else None
 
 
 class MarineIndexForecast(KhoaModel):
@@ -582,58 +323,14 @@ class MarineIndexForecast(KhoaModel):
         )
 
 
-class MarineIndexPlace(KhoaModel):
+class MarineIndexPlace(RequiredLocationFields):
     """해양 레저 지수 장소 하나와 그 장소의 예보 묶음."""
 
     service_key: str
     id: str
     name: str
-    coordinate: PlaceCoordinate
     forecasts: tuple[MarineIndexForecast, ...]
-    address: Address | None = None
-    address_coordinate: PlaceCoordinate | None = None
-    address_distance_m: float | None = None
-    address_match_type: str | None = None
-    address_source: str | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
-
-    @property
-    def lat(self) -> float:
-        """위도 별칭."""
-
-        return self.coordinate.lat
-
-    @property
-    def latitude(self) -> float:
-        """위도 값입니다."""
-
-        return self.coordinate.lat
-
-    @property
-    def lon(self) -> float:
-        """경도 별칭."""
-
-        return self.coordinate.lon
-
-    @property
-    def longitude(self) -> float:
-        """경도 값입니다."""
-
-        return self.coordinate.lon
-
-    @property
-    def parcel_address(self) -> str | None:
-        """지번주소 문자열입니다."""
-
-        jibun = self.address.jibun if self.address is not None else None
-        return jibun.address if jibun is not None else None
-
-    @property
-    def road_address(self) -> str | None:
-        """도로명주소 문자열입니다."""
-
-        road_name = self.address.road_name if self.address is not None else None
-        return road_name.address if road_name is not None else None
 
 
 class Page(KhoaModel, Generic[T]):
@@ -685,6 +382,96 @@ class RomsPrediction(KhoaModel):
             water_temperature_c=to_float_or_none(row.get("wtem")),
             raw=dict(row),
         )
+
+
+def _coordinates_from_row(row: Mapping[str, Any]) -> tuple[float | None, float | None]:
+    coordinate = _mapping_or_none(row.get("coordinate"))
+    if coordinate is not None:
+        latitude = to_float_or_none(_first_value(coordinate, "lat", "latitude"))
+        longitude = to_float_or_none(_first_value(coordinate, "lon", "longitude", "lot"))
+        if latitude is not None or longitude is not None:
+            return latitude, longitude
+    return (
+        to_float_or_none(_first_value(row, "lat", "latitude")),
+        to_float_or_none(_first_value(row, "lon", "longitude", "lot")),
+    )
+
+
+def _address_coordinates_from_row(row: Mapping[str, Any]) -> tuple[float | None, float | None]:
+    coordinate = _mapping_or_none(row.get("address_coordinate"))
+    if coordinate is not None:
+        latitude = to_float_or_none(_first_value(coordinate, "lat", "latitude"))
+        longitude = to_float_or_none(_first_value(coordinate, "lon", "longitude", "lot"))
+        if latitude is not None or longitude is not None:
+            return latitude, longitude
+    return (
+        to_float_or_none(_first_value(row, "address_latitude", "addressLatitude")),
+        to_float_or_none(_first_value(row, "address_longitude", "addressLongitude")),
+    )
+
+
+def _address_text(row: Mapping[str, Any], *keys: str) -> str | None:
+    value = _row_text(row, *keys)
+    if value is not None:
+        return value
+
+    address = _mapping_or_none(row.get("address"))
+    if address is None:
+        return None
+
+    jibun = _mapping_or_none(address.get("jibun"))
+    road_name = _mapping_or_none(address.get("road_name"))
+    for key in keys:
+        value = _text_from_value(address.get(key))
+        if value is not None:
+            return value
+        if jibun is not None:
+            value = _text_from_value(jibun.get(key))
+            if value is not None:
+                return value
+        if road_name is not None:
+            value = _text_from_value(road_name.get(key))
+            if value is not None:
+                return value
+
+    lookup: dict[str, tuple[tuple[Mapping[str, Any] | None, str], ...]] = {
+        "legal_dong_code": ((jibun, "legal_dong_code"), (address, "legal_dong_code")),
+        "road_address_code": ((road_name, "road_name_address_code"),),
+        "road_name_code": ((road_name, "road_name_code"),),
+        "parcel_address": ((jibun, "address"),),
+        "road_address": ((road_name, "address"),),
+        "detail_address": ((address, "detail_address"), (road_name, "building_name")),
+        "zipcode": (
+            (address, "effective_postal_code"),
+            (address, "postal_code"),
+            (jibun, "postal_code"),
+            (road_name, "postal_code"),
+        ),
+    }
+    for key in keys:
+        for mapping, nested_key in lookup.get(key, ()):
+            value = _text_from_value(mapping.get(nested_key) if mapping is not None else None)
+            if value is not None:
+                return value
+    return None
+
+
+def _first_value(row: Mapping[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = row.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _mapping_or_none(value: Any) -> Mapping[str, Any] | None:
+    return value if isinstance(value, Mapping) else None
+
+
+def _text_from_value(value: Any) -> str | None:
+    if isinstance(value, Mapping):
+        value = value.get("code") or value.get("value")
+    return strip_or_none(value)
 
 
 def _row_text(row: Mapping[str, Any], *keys: str) -> str | None:

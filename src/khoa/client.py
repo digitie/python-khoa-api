@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from datetime import UTC, date, datetime
 from os import PathLike
@@ -1522,16 +1523,29 @@ def _cached_beach_index_address_observatory(observatory: Observatory) -> Observa
 
 def _beach_index_lookup_observatory(observatory: Observatory) -> Observatory:
     cached = _find_beach_observatory(observatory.name, observatory.lat, observatory.lon)
-    lookup_coordinate = (
-        cached.address_coordinate
-        if cached is not None and cached.address_coordinate is not None
-        else observatory.coordinate
+    lookup_latitude = (
+        cached.address_latitude
+        if cached is not None and cached.address_latitude is not None
+        else observatory.latitude
+    )
+    lookup_longitude = (
+        cached.address_longitude
+        if cached is not None and cached.address_longitude is not None
+        else observatory.longitude
     )
     return observatory.model_copy(
         update={
-            "coordinate": lookup_coordinate,
-            "address": None,
-            "address_coordinate": None,
+            "latitude": lookup_latitude,
+            "longitude": lookup_longitude,
+            "legal_dong_code": None,
+            "road_address_code": None,
+            "road_name_code": None,
+            "parcel_address": None,
+            "road_address": None,
+            "detail_address": None,
+            "zipcode": None,
+            "address_latitude": None,
+            "address_longitude": None,
             "address_distance_m": None,
             "address_match_type": None,
             "address_source": None,
@@ -1543,10 +1557,11 @@ def _merge_beach_index_address(
     original: Observatory,
     enriched: Observatory,
 ) -> Observatory:
-    address_coordinate = enriched.address_coordinate
+    address_latitude = enriched.address_latitude
+    address_longitude = enriched.address_longitude
     distance = (
-        original.coordinate.distance_to_m(address_coordinate)
-        if address_coordinate is not None
+        _distance_m(original.latitude, original.longitude, address_latitude, address_longitude)
+        if address_latitude is not None and address_longitude is not None
         else None
     )
     match_type = (
@@ -1558,8 +1573,15 @@ def _merge_beach_index_address(
     )
     return original.model_copy(
         update={
-            "address": enriched.address,
-            "address_coordinate": address_coordinate,
+            "legal_dong_code": enriched.legal_dong_code,
+            "road_address_code": enriched.road_address_code,
+            "road_name_code": enriched.road_name_code,
+            "parcel_address": enriched.parcel_address,
+            "road_address": enriched.road_address,
+            "detail_address": enriched.detail_address,
+            "zipcode": enriched.zipcode,
+            "address_latitude": address_latitude,
+            "address_longitude": address_longitude,
             "address_distance_m": round(distance, 3) if distance is not None else None,
             "address_match_type": match_type,
             "address_source": enriched.address_source,
@@ -1574,10 +1596,18 @@ def _beach_index_place_from_rows(
     return BeachIndexPlace(
         id=observatory.id,
         name=observatory.name,
-        coordinate=observatory.coordinate,
+        latitude=observatory.latitude,
+        longitude=observatory.longitude,
         forecasts=tuple(BeachIndexForecast.from_raw(row) for row in rows),
-        address=observatory.address,
-        address_coordinate=observatory.address_coordinate,
+        legal_dong_code=observatory.legal_dong_code,
+        road_address_code=observatory.road_address_code,
+        road_name_code=observatory.road_name_code,
+        parcel_address=observatory.parcel_address,
+        road_address=observatory.road_address,
+        detail_address=observatory.detail_address,
+        zipcode=observatory.zipcode,
+        address_latitude=observatory.address_latitude,
+        address_longitude=observatory.address_longitude,
         address_distance_m=observatory.address_distance_m,
         address_match_type=observatory.address_match_type,
         address_source=observatory.address_source,
@@ -1826,18 +1856,38 @@ def _beach_search_result(
         )
 
     observatory = _find_beach_observatory_by_id_or_name(beach_code, beach_name)
-    address = observatory.address if include_address and observatory is not None else None
-    address_coordinate = (
-        observatory.address_coordinate if include_address and observatory is not None else None
-    )
     return BeachSearchResult(
         id=beach_code,
         name=beach_name or beach_code,
         obs_post_name=obs_post_name,
-        coordinate=observatory.coordinate if observatory is not None else None,
+        latitude=observatory.latitude if observatory is not None else None,
+        longitude=observatory.longitude if observatory is not None else None,
         observations=tuple(BeachSearchObservation.from_raw(row) for row in rows),
-        address=address,
-        address_coordinate=address_coordinate,
+        legal_dong_code=observatory.legal_dong_code
+        if include_address and observatory is not None
+        else None,
+        road_address_code=observatory.road_address_code
+        if include_address and observatory is not None
+        else None,
+        road_name_code=observatory.road_name_code
+        if include_address and observatory is not None
+        else None,
+        parcel_address=observatory.parcel_address
+        if include_address and observatory is not None
+        else None,
+        road_address=observatory.road_address
+        if include_address and observatory is not None
+        else None,
+        detail_address=observatory.detail_address
+        if include_address and observatory is not None
+        else None,
+        zipcode=observatory.zipcode if include_address and observatory is not None else None,
+        address_latitude=observatory.address_latitude
+        if include_address and observatory is not None
+        else None,
+        address_longitude=observatory.address_longitude
+        if include_address and observatory is not None
+        else None,
         address_distance_m=observatory.address_distance_m
         if include_address and observatory is not None
         else None,
@@ -1993,16 +2043,24 @@ def _marine_index_place_key(
 
 
 def _merge_marine_index_address(original: Observatory, enriched: Observatory) -> Observatory:
-    address_coordinate = enriched.address_coordinate
+    address_latitude = enriched.address_latitude
+    address_longitude = enriched.address_longitude
     distance = (
-        original.coordinate.distance_to_m(address_coordinate)
-        if address_coordinate is not None
+        _distance_m(original.latitude, original.longitude, address_latitude, address_longitude)
+        if address_latitude is not None and address_longitude is not None
         else None
     )
     return original.model_copy(
         update={
-            "address": enriched.address,
-            "address_coordinate": address_coordinate,
+            "legal_dong_code": enriched.legal_dong_code,
+            "road_address_code": enriched.road_address_code,
+            "road_name_code": enriched.road_name_code,
+            "parcel_address": enriched.parcel_address,
+            "road_address": enriched.road_address,
+            "detail_address": enriched.detail_address,
+            "zipcode": enriched.zipcode,
+            "address_latitude": address_latitude,
+            "address_longitude": address_longitude,
             "address_distance_m": round(distance, 3) if distance is not None else None,
             "address_match_type": enriched.address_match_type,
             "address_source": enriched.address_source,
@@ -2020,13 +2078,21 @@ def _marine_index_place_from_rows(
         service_key=service_key,
         id=observatory.id,
         name=observatory.name,
-        coordinate=observatory.coordinate,
+        latitude=observatory.latitude,
+        longitude=observatory.longitude,
         forecasts=tuple(
             MarineIndexForecast.from_raw(row, excluded_keys=name_keys)
             for row in rows
         ),
-        address=observatory.address,
-        address_coordinate=observatory.address_coordinate,
+        legal_dong_code=observatory.legal_dong_code,
+        road_address_code=observatory.road_address_code,
+        road_name_code=observatory.road_name_code,
+        parcel_address=observatory.parcel_address,
+        road_address=observatory.road_address,
+        detail_address=observatory.detail_address,
+        zipcode=observatory.zipcode,
+        address_latitude=observatory.address_latitude,
+        address_longitude=observatory.address_longitude,
         address_distance_m=observatory.address_distance_m,
         address_match_type=observatory.address_match_type,
         address_source=observatory.address_source,
@@ -2063,6 +2129,26 @@ def _find_beach_observatory(name: str, latitude: float, longitude: float) -> Obs
     if len(same_name) == 1:
         return same_name[0]
     return None
+
+
+def _distance_m(
+    latitude: float,
+    longitude: float,
+    target_latitude: float,
+    target_longitude: float,
+) -> float:
+    """두 WGS84 좌표 사이의 근사 거리를 미터 단위로 계산합니다."""
+
+    radius_m = 6_371_008.8
+    lat1 = math.radians(latitude)
+    lat2 = math.radians(target_latitude)
+    delta_lat = lat2 - lat1
+    delta_lon = math.radians(target_longitude - longitude)
+    haversine = (
+        math.sin(delta_lat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2) ** 2
+    )
+    return 2 * radius_m * math.asin(math.sqrt(haversine))
 
 
 def _row_text(row: Mapping[str, Any], *keys: str) -> str | None:

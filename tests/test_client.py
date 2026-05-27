@@ -5,7 +5,6 @@ from datetime import date
 from typing import Any
 
 import pytest
-from kraddr.base import Address
 
 from khoa import (
     AsyncKhoaClient,
@@ -234,7 +233,6 @@ def test_beach_index_can_include_vworld_address(fake_client_factory):
     assert first.id == "BCH001"
     assert first.name == "해운대해수욕장"
     assert len(first.forecasts) == 2
-    assert isinstance(first.address, Address)
     assert first.legal_dong_code == "2635010500"
     assert first.road_address_code == "26350530419929900026400000"
     assert first.road_name_code == "263504199299"
@@ -280,7 +278,7 @@ def test_beach_search_calls_direct_endpoint_and_returns_dto(fake_client_factory)
     assert result.id == "BCH001"
     assert result.name == "Haeundae Beach"
     assert result.lat is not None
-    assert isinstance(result.address, Address)
+    assert result.parcel_address
     observation = result.observations[0]
     assert observation.water_temperature_c == 16.2
     assert observation.wind_speed_m_s == 2.5
@@ -329,9 +327,8 @@ def test_oceans_beach_info_calls_public_data_endpoint_and_returns_dto(fake_clien
     assert isinstance(item, OceanBeachInfo)
     assert item.name == "신양섭지코지"
     assert item.source_key == "제주|서귀포시|신양섭지코지"
-    assert item.coordinate is not None
-    assert item.coordinate.lat == pytest.approx(33.434809)
-    assert item.coordinate.lon == pytest.approx(126.923021)
+    assert item.lat == pytest.approx(33.434809)
+    assert item.lon == pytest.approx(126.923021)
     assert page.context is not None
     assert "ServiceKey" not in page.context.request_params
 
@@ -452,7 +449,7 @@ def test_surfing_index_groups_places_and_enriches_address_once(fake_client_facto
     assert len(first.forecasts) == 2
     assert first.forecasts[0].total_index == 80
     assert first.forecasts[0].metrics["avgWvhgt"] == "0.4"
-    assert isinstance(first.address, Address)
+    assert first.parcel_address == "부산광역시 해운대구 우동 622-8"
     assert len(vworld.calls) == 2
 
 
@@ -500,7 +497,7 @@ def test_env_constructor_errors(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
     with pytest.raises(KhoaAuthError):
-        KhoaClient()
+        KhoaClient(env_file=None)
 
 
 def test_constructor_accepts_api_key_parameter():

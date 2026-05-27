@@ -71,10 +71,9 @@ data.go.kr 서비스키 신청 링크를 함께 표시할 수 있습니다.
 필드를 DTO 속성으로 제공합니다.
 
 - `id`: 내장 해수욕장 관측소 목록과 이름/좌표가 일치할 때의 `BCH...` 코드
-- `name`, `coordinate`
+- `name`, `latitude`, `longitude`
 - `forecasts`: `predcYmd`, `predcNoonSeCd`, `maxWvhgt`, `avgWtem`,
   `avgArtmp`, `maxWspd`, `opnStat`, `totalIndex`를 변환한 예보 묶음
-- `address`: `kraddr.base.Address` 타입의 주소
 - `legal_dong_code`, `road_address_code`, `road_name_code`
 - `parcel_address`, `road_address`, `detail_address`, `zipcode`
 - `address_latitude`, `address_longitude`, `address_distance_m`
@@ -101,7 +100,7 @@ TripMate 해수욕장 place feature의 기준 장소 정보는 아래 공공데�
 - `sido_name`, `gugun_name`, `name`
 - `beach_width_m`, `beach_length_m`, `beach_kind`
 - `link_url`, `link_name`, `image_url`, `emergency_contact`
-- `coordinate`: `kraddr.base.PlaceCoordinate`
+- `latitude`, `longitude`
 - `source_key`: `시도|구군|정점명` natural key
 - `raw`: 원문 row
 
@@ -125,7 +124,7 @@ TripMate나 `python-krtour-map`에서는 이 endpoint를 다시 감싸는 wrappe
 - `surfing_index`
 - `sea_trip_index`
 
-각 DTO는 `service_key`, `id`, `name`, `coordinate`, `forecasts`, `metrics`,
+각 DTO는 `service_key`, `id`, `name`, `latitude`, `longitude`, `forecasts`, `metrics`,
 주소 보강 필드를 제공합니다. `include_address=True`를 쓰면 원 좌표와 가까운
 보정 좌표를 VWorld 역지오코딩으로 확인해 주소를 보강합니다.
 
@@ -146,23 +145,21 @@ KHOA 포털 상세 페이지는 관측소 목록을 아래 AJAX 엔드포인트�
 - `lon`: WGS84 경도
 
 `khoa`의 해수욕장 번들 목록은 위 원문 필드에 VWorld 역지오코딩 주소
-필드를 추가로 포함합니다.
+문자열과 코드 필드를 추가로 포함합니다.
 
-- `coordinate`: `kraddr.base.PlaceCoordinate` 타입의 WGS84 좌표
-- `address`: `kraddr.base.Address` 타입의 주소. 지번주소, 도로명주소, 상세주소,
-  우편번호, 주소 코드 값을 직접 포함합니다.
-- `legal_dong_code`: `address`에서 파생한 법정동코드 호환 속성
-- `road_address_code`: `address`에서 파생한 26자리 도로명주소 관리코드 호환 속성.
+- `latitude`, `longitude`: WGS84 좌표
+- `legal_dong_code`: 법정동코드
+- `road_address_code`: 26자리 도로명주소 관리코드.
   구성은 행정구역 8자리,
   도로명코드 7자리, 건물 위치 구분 1자리, 건물 본번 5자리, 건물 부번 5자리입니다.
   VWorld가 도로명 결과를 주지 않는 지점은 `None`일 수 있습니다.
 - `road_name_code`: `address`에서 파생한 12자리 도로명코드. 행정구역 시군구 5자리와 도로명코드
   7자리를 결합한 값입니다.
-- `parcel_address`: `address`에서 파생한 지번 주소 호환 속성
-- `road_address`: `address`에서 파생한 도로명 주소 호환 속성
-- `detail_address`: `address.detail_address`에서 파생한 VWorld `structure.detail` 상세주소 호환 속성
-- `zipcode`: `address`에서 파생한 우편번호 호환 속성
-- `address_coordinate`: `kraddr.base.PlaceCoordinate` 타입의 주소 조회 좌표
+- `parcel_address`: 지번 주소 문자열
+- `road_address`: 도로명 주소 문자열
+- `detail_address`: VWorld `structure.detail` 상세주소 문자열
+- `zipcode`: 우편번호
+- `address_latitude`, `address_longitude`: 주소 조회 좌표
 - `address_distance_m`: 원 KHOA 좌표와 주소 조회 좌표 사이 거리
 - `address_match_type`: 원 좌표면 `exact`, 주변 좌표면 `nearby`
 - `address_source`: `vworld`
