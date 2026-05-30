@@ -93,8 +93,8 @@
 
 ## 에이전트 worktree + CodeGraph
 
-- ChatGPT Codex는 `F:\\dev\\khoa-codex`, Claude Code는 `F:\\dev\\khoa-claude`, Google Antigravity 2.0은 `F:\\dev\\khoa-antigravity`를 고정 worktree 디렉토리로 사용할 수 있습니다.
-- 현재 단일 작업 공간 `F:\\dev\\python-khoa-api`를 사용하는 경우, MCP 환경 설정의 `cwd` 경로를 이에 맞춰 통일합니다.
+- ChatGPT Codex는 `F:\\dev\\python-khoa-api-codex`, Claude Code는 `F:\\dev\\python-khoa-api-claude`, Google Antigravity 2.0은 `F:\\dev\\python-khoa-api-antigravity`를 고정 worktree 디렉토리로 사용합니다.
+- 각 에이전트는 개별 worktree 디렉토리로 진입하여 작업하며, MCP 환경 설정의 `cwd` 경로가 이에 맞춰 개별 설정되어 있습니다.
 - CodeGraph 인덱싱 정보는 작업 폴더 로컬 환경에 귀속되므로 `.codegraph` 디렉토리는 절대 git 커밋 대상으로 잡지 않고 gitignore에 유지합니다.
 
 
