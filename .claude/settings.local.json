@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git fetch *)",
+      "Bash(git pull *)",
+      "Bash(git push *)",
+      "Bash(git merge *)",
+      "Bash(gh pr *)",
+      "Bash(git rm *)",
+      "Bash(git branch *)",
+      "PowerShell(git fetch origin)",
+      "PowerShell(git rev-list --left-right --count main...origin/main)",
+      "PowerShell(python -m pytest; echo \"test-exit:$LASTEXITCODE\")",
+      "PowerShell(python -m ruff check .; echo \"ruff-exit:$LASTEXITCODE\")",
+      "PowerShell(python -m mypy src/khoa; echo \"mypy-exit:$LASTEXITCODE\")",
+      "PowerShell(python -m compileall src/khoa tests; echo \"compile-exit:$LASTEXITCODE\")",
+      "PowerShell(git diff --exit-code; echo \"diff-exit:$LASTEXITCODE\"; git status -s)"
+    ]
+  }
+}
