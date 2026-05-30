@@ -74,6 +74,15 @@
 - 코드 식별자, API 파라미터, endpoint, enum 값, 외부 오류 메시지는 원문을 유지합니다.
 - 새 public API, 모델, 예외, live test 정책을 추가하면 관련 문서도 같은 변경 안에서 갱신합니다.
 
+## 절대 하지 말 것 (DO NOT)
+
+1. **API 키 평문 커밋 금지** - `.env`나 코드, 테스트 fixture, git commit 로그에 실제 `serviceKey`나 토큰을 절대 남기지 않습니다.
+2. **`main` 직접 푸시 금지** - 모든 신규 기능 및 스타일 변경 사항은 feature 브랜치에서 PR(Pull Request) 과정을 거친 후 머지합니다.
+3. **불필요한 wrapper/adapter 생성 금지** - KHOA ODMI API나 downstream과의 호환성 부족 문제를 단순 wrapper나 facade로 땜질하지 말고, 이 저장소의 public API나 typed model을 직접 정비하여 안정화합니다.
+4. **선행 0을 누락하는 int 변환 금지** - 관측소 코드(예: BHC001, DT_0001 등)의 식별자는 의미 보존을 위해 `int`로 절대 캐스팅하지 않고 문자열 그대로 사용합니다.
+5. **품질 검증 게이트 우회 금지** - `compileall`, `pytest`, `ruff`, `mypy`로 이루어진 4단계 검증 프로세스를 우회하고 강제로 PR을 올리거나 머지하지 않습니다.
+
+
 ## 로컬 도구와 인코딩
 
 - 이 Windows 작업환경에서는 `rg.exe`가 `Access is denied`로 실패할 수 있습니다. 같은 실패를 반복하지 말고 PowerShell 파일 목록으로 우회합니다.
@@ -81,6 +90,13 @@
 - 텍스트 검색은 `Select-String`을 사용합니다. 예: `Get-ChildItem -Recurse -File | Select-String -Pattern "KhoaClient"`.
 - 한글 문서와 Python 파일은 UTF-8입니다. PowerShell에서 읽을 때 `Get-Content -Raw -Encoding UTF8` 또는 `Get-Content -Encoding UTF8`을 명시합니다.
 - PowerShell 기본 출력에서 한글이 깨져 보이면 파일이 손상됐다고 판단하지 말고, 먼저 UTF-8 인코딩을 명시해 다시 확인합니다.
+
+## 에이전트 worktree + CodeGraph
+
+- ChatGPT Codex는 `F:\\dev\\khoa-codex`, Claude Code는 `F:\\dev\\khoa-claude`, Google Antigravity 2.0은 `F:\\dev\\khoa-antigravity`를 고정 worktree 디렉토리로 사용할 수 있습니다.
+- 현재 단일 작업 공간 `F:\\dev\\python-khoa-api`를 사용하는 경우, MCP 환경 설정의 `cwd` 경로를 이에 맞춰 통일합니다.
+- CodeGraph 인덱싱 정보는 작업 폴더 로컬 환경에 귀속되므로 `.codegraph` 디렉토리는 절대 git 커밋 대상으로 잡지 않고 gitignore에 유지합니다.
+
 
 ## 작업 소유권
 
@@ -175,6 +191,17 @@ PYKHOA_RUN_LIVE=1 DATA_GO_KR_SERVICE_KEY=<approved service key> python -m pytest
 ```
 
 실제 API 키는 환경변수로만 전달합니다. 명령 기록, 문서, 커밋 메시지에 키를 남기지 않습니다.
+
+## 작업 후 체크리스트
+
+- [ ] `python -m compileall src/khoa tests` 컴파일 성공 확인
+- [ ] `python -m pytest` 단위 테스트 성공 확인
+- [ ] `python -m ruff check .` 린트 및 스타일 가이드 준수 확인
+- [ ] `python -m mypy src/khoa` 타입 안정성 검사 통과 확인
+- [ ] `CLAUDE.md`에 세션 정보 및 잔존 부채 업데이트 완료
+- [ ] 결정 사항이나 설계 구조 변화가 있을 시 관련 문서(`README.md`, `AGENTS.md`) 및 `docs/` 내 카탈로그 동기화 완료
+- [ ] live test를 돌렸을 경우 API 키가 하드코딩되지 않고 온전히 제거되었는지 다시 검토 완료
+
 
 ## 반복 실수 방지
 
