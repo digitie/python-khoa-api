@@ -9,9 +9,8 @@
 
 ### 현재 작업
 
-- maplibre-vworld-js 프로젝트의 고도화된 스타일 및 MCP 환경 설정을 본 프로젝트에 이식 및 적용 중.
-- `antigravity.json`, `claude.json`, `codex.json`, `.gemini/mcp.json`, `.claude/settings.local.json`, `.codex/config.toml` 등의 MCP 환경 설정 완료.
-- `CLAUDE.md` 작성 및 `AGENTS.md` 보강 작업 수행 중.
+- 각 에이전트 전용 Git Worktree (`python-khoa-api-*` prefix) 개설 및 CodeGraph 초기화 완료.
+- 각 에이전트의 MCP `codegraph` `cwd` 설정을 개별 워크트리 경로로 자동 갱신 완료.
 
 ### 잔존 기술 부채
 
@@ -19,7 +18,7 @@
 
 ## 에이전트 worktree + CodeGraph
 
-각 AI 에이전트(Codex, Claude Code, Antigravity 2.0)는 기본적으로 `F:\dev\python-khoa-api`를 작업 디렉토리로 공유한다. 필요한 경우 `F:\dev\khoa-codex`, `F:\dev\khoa-claude`, `F:\dev\khoa-antigravity` 등의 고정 worktree 디렉토리 분리가 가능하며, MCP 설정은 프로젝트 루트의 JSON 파일 및 `.gemini`, `.claude`, `.codex` 폴더 안에서 개별적으로 관리된다. CodeGraph 색인은 worktree마다 1회 `codegraph init` 후 `codegraph sync`를 이용해 동기화 상태를 유지한다.
+각 AI 에이전트(Codex, Claude Code, Antigravity 2.0)는 개별 Git Worktree 환경에서 독립적으로 작업한다. ChatGPT Codex는 `F:\dev\python-khoa-api-codex`, Claude Code는 `F:\dev\python-khoa-api-claude`, Google Antigravity는 `F:\dev\python-khoa-api-antigravity`를 사용한다. MCP 설정은 프로젝트 루트의 JSON 파일 및 `.gemini`, `.claude`, `.codex` 폴더 안에서 개별적으로 관리되며, 각 워크트리를 가리키도록 설정되어 있다. CodeGraph 색인은 worktree마다 1회 `codegraph init` 후 `codegraph sync`를 이용해 동기화 상태를 유지한다.
 
 ## 로컬 개발 환경
 
