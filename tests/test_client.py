@@ -358,6 +358,52 @@ def test_oceans_beach_info_accepts_wrapped_live_payload(fake_client_factory):
     assert page.total_count == 1
 
 
+def test_oceans_beach_info_parses_snake_case_live_rows(fake_client_factory):
+    # 2026-06-11 live 실측 shape (#5): row 키가 전부 snake_case.
+    row = {
+        "num": 1,
+        "sido_nm": "부산",
+        "gugun_nm": "기장군",
+        "sta_nm": "일광",
+        "beach_wid": 20.0,
+        "beach_len": 1100.0,
+        "beach_knd": "모래",
+        "link_addr": "http://tour.busan.go.kr/board/view.busan?dataSid=274",
+        "link_nm": "부산시문화관광",
+        "beach_img": None,
+        "link_tel": "기장군보건소일광지소(051-721-1097)",
+        "lat": "35.2616260000",
+        "lon": "129.2336930000",
+    }
+    payload = {
+        "getOceansBeachInfo": {
+            "header": {"code": "00", "message": "NORMAL SERVIE"},
+            "item": [row],
+            "rows": None,
+            "numOfRows": 1,
+            "pageNo": 1,
+            "totalCount": 7,
+        }
+    }
+    client, _session = fake_client_factory(FakeResponse(payload))
+
+    page = client.oceans_beach_info("부산", num_of_rows=1)
+
+    item = page.items[0]
+    assert item.sido_name == "부산"
+    assert item.gugun_name == "기장군"
+    assert item.name == "일광"
+    assert item.beach_width_m == pytest.approx(20.0)
+    assert item.beach_length_m == pytest.approx(1100.0)
+    assert item.beach_kind == "모래"
+    assert item.link_url == "http://tour.busan.go.kr/board/view.busan?dataSid=274"
+    assert item.link_name == "부산시문화관광"
+    assert item.image_url is None
+    assert item.emergency_contact == "기장군보건소일광지소(051-721-1097)"
+    assert item.lat == pytest.approx(35.261626)
+    assert item.lon == pytest.approx(129.233693)
+
+
 def test_iter_oceans_beach_info_pages_scans_sido_pages(fake_client_factory):
     client, session = fake_client_factory(
         FakeResponse(
