@@ -197,24 +197,28 @@ class OceanBeachInfo(KhoaModel):
 
     @classmethod
     def from_raw(cls, row: Mapping[str, Any]) -> OceanBeachInfo:
-        """공공데이터포털 해수욕장정보 원문 행을 typed DTO로 변환합니다."""
+        """공공데이터포털 해수욕장정보 원문 행을 typed DTO로 변환합니다.
 
-        sido_name = _required_row_text(row, "sidoNm", "SIDO_NM", "sido_name")
-        name = _required_row_text(row, "staNm", "beachName", "name")
+        live 응답(2026-06 실측)은 snake_case 키(``sido_nm``/``sta_nm``/
+        ``beach_wid`` …)를 쓰므로 camelCase와 함께 둘 다 받습니다 (#5).
+        """
+
+        sido_name = _required_row_text(row, "sidoNm", "SIDO_NM", "sido_name", "sido_nm")
+        name = _required_row_text(row, "staNm", "beachName", "name", "sta_nm")
         latitude = to_float_or_none(row.get("lat"))
         longitude = to_float_or_none(row.get("lon"))
         return cls(
             num=_row_text(row, "num"),
             sido_name=sido_name,
-            gugun_name=_row_text(row, "gugunNm", "gugun_name"),
+            gugun_name=_row_text(row, "gugunNm", "gugun_name", "gugun_nm"),
             name=name,
-            beach_width_m=to_float_or_none(row.get("beachWid")),
-            beach_length_m=to_float_or_none(row.get("beachLen")),
-            beach_kind=_row_text(row, "beachKnd"),
-            link_url=_row_text(row, "linkAddr"),
-            link_name=_row_text(row, "linkNm"),
-            image_url=_row_text(row, "beachImg"),
-            emergency_contact=_row_text(row, "linkTel"),
+            beach_width_m=to_float_or_none(_row_value(row, "beachWid", "beach_wid")),
+            beach_length_m=to_float_or_none(_row_value(row, "beachLen", "beach_len")),
+            beach_kind=_row_text(row, "beachKnd", "beach_knd"),
+            link_url=_row_text(row, "linkAddr", "link_addr"),
+            link_name=_row_text(row, "linkNm", "link_nm"),
+            image_url=_row_text(row, "beachImg", "beach_img"),
+            emergency_contact=_row_text(row, "linkTel", "link_tel"),
             latitude=latitude,
             longitude=longitude,
             raw=dict(row),
@@ -479,6 +483,15 @@ def _row_text(row: Mapping[str, Any], *keys: str) -> str | None:
         text = strip_or_none(row.get(key))
         if text is not None:
             return text
+    return None
+
+
+def _row_value(row: Mapping[str, Any], *keys: str) -> Any:
+    """첫 번째 non-None 값을 반환합니다 (숫자 등 비-텍스트 필드 키 fallback용)."""
+    for key in keys:
+        value = row.get(key)
+        if value is not None:
+            return value
     return None
 
 
