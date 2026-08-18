@@ -45,6 +45,7 @@ Get-Content -Path docs/testing.md -Raw -Encoding UTF8
 ## API 키와 live test
 
 - 실제 `serviceKey`는 코드, fixture, 문서, 커밋 메시지에 남기지 않습니다.
+- `serviceKey`를 포함하는 요청 URL은 반드시 `https://`를 사용합니다. data.go.kr의 HTTP 엔드포인트가 HTTPS로 자동 전환된다고 가정하지 않습니다.
 - live test는 `PYKHOA_RUN_LIVE=1`과 `DATA_GO_KR_SERVICE_KEY`가 있을 때만 실행합니다.
 - data.go.kr `HTTP 403`은 보통 키가 해당 KHOA ODMI 서비스 활용신청/승인을 받지 못했다는 뜻입니다.
 - 403을 해결하려고 테스트 코드를 느슨하게 만들지 말고, 권한 상태를 확인합니다.

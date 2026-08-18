@@ -68,6 +68,7 @@ PYKHOA_RUN_LIVE=1 DATA_GO_KR_SERVICE_KEY=<approved service key> python -m pytest
 2. **Replay 기반 단위 테스트**: 기본 테스트 환경에서는 실제 외부 포털이나 KHOA API를 호출하지 않고, 마스킹 처리된 오프라인 JSON fixture 데이터를 재현하여 검증한다.
 3. **KHOA items.item 정규화**: KHOA의 response에서 `items.item`은 단일 객체(dict) 또는 리스트(list)로 들쭉날쭉할 수 있으므로, parser 단에서 항상 리스트로 정규화한다.
 4. **선행 0 코드 및 식별자 보존**: 관측소 ID 등은 선행 0이 의미가 있으므로 `int`로 변환하지 않고 `str` 형태 그대로 유지한다.
+5. **인증키 전송은 HTTPS로만 수행**: `serviceKey`를 포함하는 data.go.kr 기본 URL과 해수욕장정보 URL은 `https://`를 사용하며, 회귀 테스트로 강제한다.
 
 ## 작업 후 의무사항
 

@@ -58,7 +58,7 @@ from .services import (
 DEFAULT_ENV_NAMES = DATA_GO_KR_ENV_NAMES
 KHOA_BEACH_SEARCH_URL = "https://khoa.go.kr/oceandata/api/beach/search.do"
 OCEANS_BEACH_INFO_URL = (
-    "http://apis.data.go.kr/1192000/service/"
+    "https://apis.data.go.kr/1192000/service/"
     "OceansBeachInfoService1/getOceansBeachInfo1"
 )
 OCEANS_BEACH_INFO_ENDPOINT = "service/OceansBeachInfoService1/getOceansBeachInfo1"

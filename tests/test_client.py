@@ -49,6 +49,7 @@ def test_fetch_builds_request_and_normalizes_items(fake_client_factory):
     )
 
     call = session.calls[0]
+    assert call["url"].startswith("https://")
     assert call["url"].endswith("/roms/GetRomsApiService")
     assert call["params"]["serviceKey"] == "TEST_KEY"
     assert call["params"]["type"] == "json"
@@ -103,6 +104,7 @@ async def test_aio_client_iterates_oceans_beach_info_pages() -> None:
     ]
 
     assert pages[0].items[0].name == "A"
+    assert session.calls[0]["url"].startswith("https://")
     assert session.calls[0]["url"].endswith("/OceansBeachInfoService1/getOceansBeachInfo1")
 
 
