@@ -14,7 +14,7 @@ from typing import Any, Final
 from .keys import SERVICE_KEY_ENV_NAMES_BY_SOURCE
 
 DATA_GO_KR_PROVIDER_CODE: Final = "1192136"
-DEFAULT_BASE_URL: Final = f"http://apis.data.go.kr/{DATA_GO_KR_PROVIDER_CODE}"
+DEFAULT_BASE_URL: Final = f"https://apis.data.go.kr/{DATA_GO_KR_PROVIDER_CODE}"
 KHOA_ODMI_LIST_URL: Final = "https://www.khoa.go.kr/oceandata/openapi/odmi/odmiApiList.do"
 
 

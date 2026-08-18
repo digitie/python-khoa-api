@@ -87,7 +87,7 @@ TripMate 해수욕장 place feature의 기준 장소 정보는 아래 공공데�
 - data.go.kr ID: `15058519`
 - 상세 URL: <https://www.data.go.kr/data/15058519/openapi.do>
 - 요청 URL:
-  `http://apis.data.go.kr/1192000/service/OceansBeachInfoService1/getOceansBeachInfo1`
+  `https://apis.data.go.kr/1192000/service/OceansBeachInfoService1/getOceansBeachInfo1`
 - 필수 파라미터: `ServiceKey`, `SIDO_NM`
 - 페이지 파라미터: `pageNo`, `numOfRows`
 - 결과 형식 파라미터: `resultType=JSON`
