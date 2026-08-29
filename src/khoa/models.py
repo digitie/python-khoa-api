@@ -330,7 +330,7 @@ class MarineIndexForecast(KhoaModel):
 class MarineIndexPlace(RequiredLocationFields):
     """해양 레저 지수 장소 하나와 그 장소의 예보 묶음."""
 
-    service_key: str
+    index_type: str
     id: str
     name: str
     forecasts: tuple[MarineIndexForecast, ...]

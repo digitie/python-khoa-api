@@ -17,7 +17,7 @@ from ._convert import (
     without_none,
 )
 from ._http import KhoaHttp, SessionLike, run_async
-from .debug import DebugRun, debug_error
+from .debug import DebugRun, debug_error, redact_sensitive
 from .exceptions import (
     KhoaAuthError,
     KhoaNoDataError,
@@ -309,13 +309,16 @@ class KhoaClient:
             extra=kwargs,
         )
         payload, request_url = await self._http.aget(definition, request_params)
-        body = _extract_body(payload, definition)
+        body = _extract_body(payload, definition, self.service_key)
         rows = _extract_items(body, definition)
+        parsed_total_count = to_int_or_none(body.get("totalCount"))
+        parsed_page_no = to_int_or_none(body.get("pageNo"))
+        parsed_num_of_rows = to_int_or_none(body.get("numOfRows"))
         return Page[RawRecord](
             items=tuple(rows),
-            total_count=to_int_or_none(body.get("totalCount")) or len(rows),
-            page_no=to_int_or_none(body.get("pageNo")) or page_no,
-            num_of_rows=to_int_or_none(body.get("numOfRows")) or num_of_rows,
+            total_count=parsed_total_count if parsed_total_count is not None else len(rows),
+            page_no=parsed_page_no if parsed_page_no is not None else page_no,
+            num_of_rows=parsed_num_of_rows if parsed_num_of_rows is not None else num_of_rows,
             raw=dict(body),
             context=_context(definition, request_url, request_params),
         )
@@ -353,7 +356,9 @@ class KhoaClient:
         """디버그 UI/fixture 생성을 위한 fetch 실행 정보를 비동기로 반환합니다."""
 
         definition = get_service(service)
-        input_data = {"service": definition.key, "params": dict(params or {}), "options": kwargs}
+        input_data = redact_sensitive(
+            {"service": definition.key, "params": dict(params or {}), "options": kwargs}
+        )
         catalog_entry = get_api_catalog_entry(definition)
         trace = [
             f"서비스 정의 확인: {definition.key}",
@@ -434,9 +439,9 @@ class KhoaClient:
                 return
             if max_items is not None and yielded >= max_items:
                 return
-            if page.next_page_no is None:
+            if not page.has_next_page:
                 return
-            next_page = page.next_page_no
+            next_page += 1
 
     async def aiter_pages(
         self,
@@ -471,9 +476,9 @@ class KhoaClient:
                 return
             if max_items is not None and yielded >= max_items:
                 return
-            if page.next_page_no is None:
+            if not page.has_next_page:
                 return
-            next_page = page.next_page_no
+            next_page += 1
 
     def roms(
         self,
@@ -648,7 +653,8 @@ class KhoaClient:
         key = normalize_service_key(service_key) or get_service_key(
             "khoa.go.kr",
             env_file=env_file,
-        ) or self.service_key
+            required=True,
+        )
         params = {"ServiceKey": key, "BeachCode": beach_code}
         payload, _request_url = await self._http.aget_url(
             KHOA_BEACH_SEARCH_URL,
@@ -722,6 +728,7 @@ class KhoaClient:
             payload,
             provider="data.go.kr",
             endpoint=OCEANS_BEACH_INFO_ENDPOINT,
+            service_key=key,
         )
         rows = _extract_direct_items(
             body,
@@ -731,11 +738,14 @@ class KhoaClient:
         request_params = {
             key: value for key, value in params.items() if key != "ServiceKey"
         }
+        parsed_total_count = to_int_or_none(body.get("totalCount"))
+        parsed_page_no = to_int_or_none(body.get("pageNo"))
+        parsed_num_of_rows = to_int_or_none(body.get("numOfRows"))
         return Page[OceanBeachInfo](
             items=tuple(OceanBeachInfo.from_raw(row) for row in rows),
-            total_count=to_int_or_none(body.get("totalCount")) or len(rows),
-            page_no=to_int_or_none(body.get("pageNo")) or page_no,
-            num_of_rows=to_int_or_none(body.get("numOfRows")) or num_of_rows,
+            total_count=parsed_total_count if parsed_total_count is not None else len(rows),
+            page_no=parsed_page_no if parsed_page_no is not None else page_no,
+            num_of_rows=parsed_num_of_rows if parsed_num_of_rows is not None else num_of_rows,
             raw=dict(body),
             context=ResponseContext(
                 provider="data.go.kr",
@@ -784,9 +794,9 @@ class KhoaClient:
                     return
                 if max_items is not None and yielded_items >= max_items:
                     return
-                if not page.items or page.next_page_no is None:
+                if not page.items or not page.has_next_page:
                     break
-                next_page = page.next_page_no
+                next_page += 1
 
     async def aiter_oceans_beach_info_pages(
         self,
@@ -822,9 +832,9 @@ class KhoaClient:
                     return
                 if max_items is not None and yielded_items >= max_items:
                     return
-                if not page.items or page.next_page_no is None:
+                if not page.items or not page.has_next_page:
                     break
-                next_page = page.next_page_no
+                next_page += 1
 
     def sea_split_index(self, **kwargs: Any) -> Page[MarineIndexPlace]:
         """바다갈라짐 체험지수를 장소별 DTO로 반환합니다."""
@@ -1251,9 +1261,15 @@ def _context(
     )
 
 
-def _extract_body(payload: Mapping[str, Any], service: ServiceDefinition) -> Mapping[str, Any]:
+def _extract_body(
+    payload: Mapping[str, Any],
+    service: ServiceDefinition,
+    service_key: str,
+) -> Mapping[str, Any]:
     if "OpenAPI_ServiceResponse" in payload:
-        _raise_for_openapi_service_response(payload["OpenAPI_ServiceResponse"], service)
+        _raise_for_openapi_service_response(
+            payload["OpenAPI_ServiceResponse"], service, service_key
+        )
 
     response = payload.get("response")
     if isinstance(response, Mapping):
@@ -1282,6 +1298,13 @@ def _extract_body(payload: Mapping[str, Any], service: ServiceDefinition) -> Map
 
     code = str(header.get("resultCode", "")).strip()
     message = str(header.get("resultMsg", "")).strip()
+    if "resultCode" not in header and message:
+        raise KhoaParseError(
+            "KHOA response.header contained resultMsg without resultCode",
+            endpoint=service.endpoint,
+            service=service.key,
+            failure_kind="parse",
+        )
     if code in {"0", "00", "0000", "NORMAL_CODE", ""}:
         if not isinstance(body, Mapping):
             raise KhoaParseError(
@@ -1293,7 +1316,7 @@ def _extract_body(payload: Mapping[str, Any], service: ServiceDefinition) -> Map
         return body
     if code == "03":
         return body if isinstance(body, Mapping) else {}
-    _raise_for_result_code(code, message, service)
+    _raise_for_result_code(code, message, service, service_key)
     raise AssertionError("unreachable")
 
 
@@ -1323,7 +1346,11 @@ def _extract_items(
     )
 
 
-def _raise_for_openapi_service_response(data: Any, service: ServiceDefinition) -> None:
+def _raise_for_openapi_service_response(
+    data: Any,
+    service: ServiceDefinition,
+    service_key: str,
+) -> None:
     if not isinstance(data, Mapping):
         raise KhoaParseError(
             "OpenAPI_ServiceResponse was not an object",
@@ -1341,13 +1368,24 @@ def _raise_for_openapi_service_response(data: Any, service: ServiceDefinition) -
         )
     code = str(header.get("returnReasonCode") or "").strip()
     message = str(header.get("returnAuthMsg") or header.get("errMsg") or "KHOA service error")
-    _raise_for_result_code(code, message, service)
+    _raise_for_result_code(code, message, service, service_key)
 
 
-def _raise_for_result_code(code: str, message: str, service: ServiceDefinition) -> None:
+def _raise_for_result_code(
+    code: str,
+    message: str,
+    service: ServiceDefinition,
+    service_key: str,
+) -> None:
     text = f"KHOA API returned {code}: {message}" if code else message
+    text = _redact_secret(text, service_key)
     upper = text.upper()
-    if code in {"20", "30", "31"} or "SERVICE_KEY" in upper or "AUTH" in upper:
+    if (
+        code in {"20", "21", "30", "31", "32", "33"}
+        or "SERVICE_KEY" in upper
+        or "SERVICEKEY" in upper
+        or "AUTH" in upper
+    ):
         raise KhoaAuthError(
             text,
             endpoint=service.endpoint,
@@ -1620,12 +1658,14 @@ def _extract_data_go_body(
     *,
     provider: str,
     endpoint: str,
+    service_key: str,
 ) -> Mapping[str, Any]:
     if "OpenAPI_ServiceResponse" in payload:
         _raise_direct_openapi_service_response(
             payload["OpenAPI_ServiceResponse"],
             provider=provider,
             endpoint=endpoint,
+            service_key=service_key,
         )
 
     payload = _unwrap_direct_payload(payload)
@@ -1648,6 +1688,13 @@ def _extract_data_go_body(
 
     code = str(header.get("resultCode", header.get("code", ""))).strip()
     message = str(header.get("resultMsg", header.get("message", ""))).strip()
+    if "resultCode" not in header and "code" not in header and message:
+        raise KhoaParseError(
+            "data.go.kr response.header contained a message without resultCode",
+            provider=provider,
+            endpoint=endpoint,
+            failure_kind="parse",
+        )
     if code in {"0", "00", "0000", "NORMAL_CODE", ""}:
         if not isinstance(body, Mapping):
             raise KhoaParseError(
@@ -1659,7 +1706,9 @@ def _extract_data_go_body(
         return body
     if code == "03":
         return body if isinstance(body, Mapping) else {}
-    _raise_direct_result_code(code, message, provider=provider, endpoint=endpoint)
+    _raise_direct_result_code(
+        code, message, provider=provider, endpoint=endpoint, service_key=service_key
+    )
     raise AssertionError("unreachable")
 
 
@@ -1705,6 +1754,7 @@ def _raise_direct_openapi_service_response(
     *,
     provider: str,
     endpoint: str,
+    service_key: str,
 ) -> None:
     if not isinstance(data, Mapping):
         raise KhoaParseError(
@@ -1723,7 +1773,9 @@ def _raise_direct_openapi_service_response(
         )
     code = str(header.get("returnReasonCode") or "").strip()
     message = str(header.get("returnAuthMsg") or header.get("errMsg") or "data.go.kr error")
-    _raise_direct_result_code(code, message, provider=provider, endpoint=endpoint)
+    _raise_direct_result_code(
+        code, message, provider=provider, endpoint=endpoint, service_key=service_key
+    )
 
 
 def _raise_direct_result_code(
@@ -1732,10 +1784,17 @@ def _raise_direct_result_code(
     *,
     provider: str,
     endpoint: str,
+    service_key: str,
 ) -> None:
     text = f"data.go.kr API returned {code}: {message}" if code else message
+    text = _redact_secret(text, service_key)
     upper = text.upper()
-    if code in {"20", "30", "31"} or "SERVICE_KEY" in upper or "AUTH" in upper:
+    if (
+        code in {"20", "21", "30", "31", "32", "33"}
+        or "SERVICE_KEY" in upper
+        or "SERVICEKEY" in upper
+        or "AUTH" in upper
+    ):
         raise KhoaAuthError(
             text,
             provider=provider,
@@ -2075,7 +2134,7 @@ def _marine_index_place_from_rows(
     rows: list[RawRecord],
 ) -> MarineIndexPlace:
     return MarineIndexPlace(
-        service_key=service_key,
+        index_type=service_key,
         id=observatory.id,
         name=observatory.name,
         latitude=observatory.latitude,

@@ -13,6 +13,7 @@ import importlib
 import json
 import math
 import re
+import time
 import zlib
 from collections.abc import Mapping
 from os import PathLike
@@ -20,6 +21,7 @@ from typing import Any, Final, Protocol, cast
 
 import requests
 
+from ._http import TRANSIENT_STATUSES
 from .exceptions import KhoaParseError, KhoaRequestError, KhoaServerError
 from .models import Observatory
 
@@ -477,20 +479,27 @@ def fetch_openapi_info(
     session: PortalSessionLike | None = None,
     timeout: float = 10.0,
     url: str = KHOA_OPENAPI_INFO_URL,
+    retries: int = 3,
 ) -> dict[str, Any]:
     """비표준 AJAX 엔드포인트에서 KHOA 포털 OpenAPI 상세 JSON을 가져옵니다."""
 
     portal_session = session or cast(PortalSessionLike, requests.Session())
     text_id = str(api_id)
-    response = portal_session.post(
-        url,
-        data={"id": text_id},
-        headers={
-            "X-Requested-With": "XMLHttpRequest",
-            "Referer": f"{KHOA_OPENAPI_DETAIL_URL}?id={text_id}",
-        },
-        timeout=timeout,
-    )
+    attempts = max(1, retries + 1)
+    for attempt in range(attempts):
+        response = portal_session.post(
+            url,
+            data={"id": text_id},
+            headers={
+                "X-Requested-With": "XMLHttpRequest",
+                "Referer": f"{KHOA_OPENAPI_DETAIL_URL}?id={text_id}",
+            },
+            timeout=timeout,
+        )
+        if response.status_code in TRANSIENT_STATUSES and attempt < attempts - 1:
+            time.sleep(min(8.0, 2.0**attempt))
+            continue
+        break
     _raise_for_portal_status(response, api_id=text_id)
     payload = _decode_portal_json(response, api_id=text_id)
     if not isinstance(payload, Mapping):

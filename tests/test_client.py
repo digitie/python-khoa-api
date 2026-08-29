@@ -492,7 +492,7 @@ def test_surfing_index_groups_places_and_enriches_address_once(fake_client_facto
     assert len(page.items) == 2
     first = page.items[0]
     assert isinstance(first, MarineIndexPlace)
-    assert first.service_key == "surfing_index"
+    assert first.index_type == "surfing_index"
     assert first.name == "Surf A"
     assert len(first.forecasts) == 2
     assert first.forecasts[0].total_index == 80
