@@ -1,24 +1,60 @@
 # AGENTS.md
 
+## 목표
+
+`python-khoa-api`는 data.go.kr을 통해 제공되는 국립해양조사원 KHOA 바다누리 ODMI OpenAPI의 비공식 Python 클라이언트다. Python import 패키지 이름은 `khoa`이며, 범용 호출 `KhoaClient.fetch()`와 안정적으로 모델링한 typed helper, Pydantic 모델 DTO를 함께 제공한다. 작업 전에 세부 API 목록은 `docs/openapi-catalog.md`, 테스트 규칙은 `docs/testing.md`, 사용자 예시는 `README.md`를 함께 확인한다.
+
+## Think Before Coding
+
+- 요청이 모호할 때는 해석을 조용히 정하지 말 것
+- 중요한 가정은 숨기지 말고 드러낼 것
+- KHOA ODMI 응답 구조나 필수 파라미터가 불확실하면 `docs/openapi-catalog.md`와 실제 응답을 먼저 확인할 것
+- 안전하게 진행하기 어려울 정도로 혼란스러우면 추측하지 말고 확인할 것
+
+## Simplicity First
+
+- 요청을 완전히 해결하는 최소한의 코드만 작성할 것
+- 요청되지 않은 기능을 추가하지 말 것
+- 일회성 용도를 위해 새 wrapper/adapter 계층을 만들지 말 것 (아래 DO NOT 참고)
+- 구체적인 필요 없이 설정 가능성이나 유연성을 늘리지 말 것
+
+## Surgical Changes
+
+- 요청을 처리하는 데 필요한 코드만 변경할 것
+- 관련 없는 코드의 포맷, 이름, 스타일을 건드리지 말 것
+- `src/khoa/services.py`와 `docs/openapi-catalog.md`는 항상 함께 갱신할 것
+- 관련 없는 문제를 발견하면 패치에 섞지 말고 따로 언급할 것
+
+## Goal-Driven Execution
+
+- 모호한 요청을 구체적이고 검증 가능한 결과로 바꿀 것
+- 버그 수정은 재현(실패하는 테스트) 없이 바로 신뢰하지 말 것
+- data.go.kr HTTP 403은 권한 미승인 문제이지 버그가 아니므로 단위 테스트로 위장해 넘어가지 말 것
+- live test를 돌리지 못했다면 무엇이 아직 미검증인지 밝힐 것
+
+## Practical Bias
+
+- 비단순 작업에서는 성급함보다 신중함을 우선할 것
+- 변경 내역은 리뷰 가능한 범위와 요청 범위에 가깝게 유지할 것
+- 아주 단순하고 명백한 한 줄 작업은 과하게 무겁게 다루지 말 것
+
 ## 문서 언어 정책
 
 이 저장소의 모든 Markdown/RST 문서는 한글로 작성합니다. 공식 API 필드명, 코드 식별자, 명령어, URL, provider 원문처럼 그대로 보존해야 하는 값만 영어를 유지합니다. 새 문서나 기존 문서를 수정할 때도 이 규칙을 우선합니다.
 
-## 역할
+## 식별자
 
-이 문서는 `python-khoa-api`에서 작업하는 Codex/agent를 위한 운영 가이드입니다. 작업 전에 먼저 이 파일을 읽고, 세부 API 목록은 `docs/openapi-catalog.md`, 테스트 규칙은 `docs/testing.md`, 사용자 예시는 `README.md`를 함께 확인합니다.
+| 항목 | 값 |
+|------|----|
+| 배포 패키지 이름 | `python-khoa-api` |
+| Python import | `from khoa import ...` |
+| data.go.kr ODMI 서비스키 환경변수 | `DATA_GO_KR_SERVICE_KEY` |
+| KHOA 직접 endpoint 서비스키 환경변수 | `KHOA_DIRECT_SERVICE_KEY` |
+| VWorld 역지오코딩 키 환경변수 (선택) | `VWORLD_API_KEY` |
 
 ## 지시 우선순위
 
-1. 사용자 요청
-2. 이 `AGENTS.md`
-3. `docs/openapi-catalog.md`
-4. `docs/testing.md`
-5. `README.md`
-6. 기존 코드와 테스트
-7. 최소한의 되돌릴 수 있는 가정
-
-문서가 충돌하면 더 높은 우선순위의 문서를 따르고, 필요하면 낮은 우선순위 문서를 같은 변경 안에서 갱신합니다.
+사용자 요청 > `AGENTS.md` > `README.md`/tests. 문서가 충돌하면 더 높은 우선순위의 문서를 따르고, 필요하면 낮은 우선순위 문서를 같은 변경 안에서 갱신합니다.
 
 ## 프로젝트 기준
 
@@ -30,14 +66,6 @@
 - Python 지원 기준은 `pyproject.toml`의 `requires-python`을 따릅니다.
 - 기본 테스트는 실제 네트워크 호출 없이 동작해야 합니다.
 - 실제 API 테스트는 `PYKHOA_RUN_LIVE=1`과 `DATA_GO_KR_SERVICE_KEY`가 있을 때만 실행합니다.
-
-## Provider API 사용 원칙
-
-- 외부 API 관련 작업은 다른 구현보다 먼저 wrapper/adapter/gateway 지양 원칙을 확인하고 문서/코드에 반영한 뒤 진행합니다.
-- downstream이 직접 사용할 안정된 public client, typed model, enum, helper를 제공합니다.
-- 단순 전달용 wrapper, 장기 호환 alias, 임시 facade를 만들지 않습니다.
-- TripMate나 `python-krtour-map`에서 필요한 endpoint, pagination, cursor, exception, raw payload 계약이 부족하면 이 저장소의 public API를 먼저 안정화합니다.
-- 다른 라이브러리에 검증된 구현이 있으면 wrapper로 감싸지 말고 라이선스와 출처를 확인한 뒤 현재 구조에 직접 반영합니다.
 
 ## 구현 방향
 
@@ -52,6 +80,9 @@
 - `docs/debug-fixtures.md`: 디버그 실행, fixture 저장, replay 테스트 구조.
 - `docs/testing.md`: 로컬 검증, live test 실행 방법, data.go.kr 403 처리 안내.
 - `docs/repeated-mistakes.md`: 이 저장소에서 반복하지 말아야 할 작업 실수와 환경 함정.
+- `docs/decisions.md`: 구조적 의사결정 기록.
+- `CHANGELOG.md`: 사용자 가시 변경 이력.
+- `LICENSE`: GPL-3.0-or-later 전문.
 - `pyproject.toml`: 패키징, 의존성, lint, test, type-check 설정.
 - `src/khoa/client.py`: 사용자 진입점, 범용 호출, 페이지 처리, typed helper.
 - `src/khoa/_http.py`: HTTP transport, retry, 상태 코드와 XML 오류 매핑.
@@ -78,25 +109,9 @@
 
 1. **API 키 평문 커밋 금지** - `.env`나 코드, 테스트 fixture, git commit 로그에 실제 `serviceKey`나 토큰을 절대 남기지 않습니다.
 2. **`main` 직접 푸시 금지** - 모든 신규 기능 및 스타일 변경 사항은 feature 브랜치에서 PR(Pull Request) 과정을 거친 후 머지합니다.
-3. **불필요한 wrapper/adapter 생성 금지** - KHOA ODMI API나 downstream과의 호환성 부족 문제를 단순 wrapper나 facade로 땜질하지 말고, 이 저장소의 public API나 typed model을 직접 정비하여 안정화합니다.
+3. **불필요한 wrapper/adapter 생성 금지** - KHOA ODMI API나 downstream(TripMate, `python-krtour-map` 등)과의 호환성 부족 문제를 단순 전달용 wrapper, 장기 호환 alias, 임시 facade로 땜질하지 말고, 이 저장소의 public client·typed model·enum·helper를 직접 정비하여 안정화합니다. 다른 라이브러리에 검증된 구현이 있으면 wrapper로 감싸지 말고 라이선스와 출처를 확인한 뒤 현재 구조에 직접 반영합니다.
 4. **선행 0을 누락하는 int 변환 금지** - 관측소 코드(예: BHC001, DT_0001 등)의 식별자는 의미 보존을 위해 `int`로 절대 캐스팅하지 않고 문자열 그대로 사용합니다.
 5. **품질 검증 게이트 우회 금지** - `compileall`, `pytest`, `ruff`, `mypy`로 이루어진 4단계 검증 프로세스를 우회하고 강제로 PR을 올리거나 머지하지 않습니다.
-
-
-## 로컬 도구와 인코딩
-
-- 이 Windows 작업환경에서는 `rg.exe`가 `Access is denied`로 실패할 수 있습니다. 같은 실패를 반복하지 말고 PowerShell 파일 목록으로 우회합니다.
-- 파일 목록은 `Get-ChildItem -Recurse -File -Name | Sort-Object` 또는 `git ls-files`를 사용합니다.
-- 텍스트 검색은 `Select-String`을 사용합니다. 예: `Get-ChildItem -Recurse -File | Select-String -Pattern "KhoaClient"`.
-- 한글 문서와 Python 파일은 UTF-8입니다. PowerShell에서 읽을 때 `Get-Content -Raw -Encoding UTF8` 또는 `Get-Content -Encoding UTF8`을 명시합니다.
-- PowerShell 기본 출력에서 한글이 깨져 보이면 파일이 손상됐다고 판단하지 말고, 먼저 UTF-8 인코딩을 명시해 다시 확인합니다.
-
-## 에이전트 worktree + CodeGraph
-
-- ChatGPT Codex는 `F:\\dev\\python-khoa-api-codex`, Claude Code는 `F:\\dev\\python-khoa-api-claude`, Google Antigravity 2.0은 `F:\\dev\\python-khoa-api-antigravity`를 고정 worktree 디렉토리로 사용합니다.
-- 각 에이전트는 개별 worktree 디렉토리로 진입하여 작업하며, MCP 환경 설정의 `cwd` 경로가 이에 맞춰 개별 설정되어 있습니다.
-- CodeGraph 인덱싱 정보는 작업 폴더 로컬 환경에 귀속되므로 `.codegraph` 디렉토리는 절대 git 커밋 대상으로 잡지 않고 gitignore에 유지합니다.
-
 
 ## 작업 소유권
 
@@ -171,7 +186,7 @@
 - 파일 위치는 프로젝트 기준 상대 경로만 사용합니다.
 - 명령어, URL, API 파라미터 이름, 코드 식별자는 원문을 유지합니다.
 - 반복되는 실수는 `docs/repeated-mistakes.md`에 추가합니다.
-- PowerShell 인코딩 문제와 `rg` 실행 권한 문제는 새 작업자도 볼 수 있게 이 문서와 `docs/repeated-mistakes.md`에 유지합니다.
+- PowerShell 인코딩 문제와 `rg` 실행 권한 문제 같은 로컬 도구 함정은 `docs/repeated-mistakes.md`에 유지합니다.
 
 ## 검증
 
@@ -198,8 +213,9 @@ PYKHOA_RUN_LIVE=1 DATA_GO_KR_SERVICE_KEY=<approved service key> python -m pytest
 - [ ] `python -m pytest` 단위 테스트 성공 확인
 - [ ] `python -m ruff check .` 린트 및 스타일 가이드 준수 확인
 - [ ] `python -m mypy src/khoa` 타입 안정성 검사 통과 확인
-- [ ] `CLAUDE.md`에 세션 정보 및 잔존 부채 업데이트 완료
+- [ ] 구조적 의사결정이 있었다면 `docs/decisions.md`에 기록 완료
 - [ ] 결정 사항이나 설계 구조 변화가 있을 시 관련 문서(`README.md`, `AGENTS.md`) 및 `docs/` 내 카탈로그 동기화 완료
+- [ ] 사용자 가시 변경이면 `CHANGELOG.md` 갱신 완료
 - [ ] live test를 돌렸을 경우 API 키가 하드코딩되지 않고 온전히 제거되었는지 다시 검토 완료
 
 

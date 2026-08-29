@@ -1,5 +1,9 @@
 # python-khoa-api
 
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
+![GPL-3.0-or-later 라이선스](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)
+![Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)
+
 data.go.kr로 제공되는 국립해양조사원 KHOA 바다누리 ODMI OpenAPI의 비공식
 Python 클라이언트입니다.
 
@@ -7,6 +11,24 @@ Python 클라이언트입니다.
 배포 패키지 이름은 `python-khoa-api`이고, 코드에서는 `khoa`로 import합니다.
 
 <https://www.khoa.go.kr/oceandata/openapi/odmi/odmiApiList.do>
+
+현재 상태와 변경 이력은 [`CHANGELOG.md`](CHANGELOG.md)의 `[Unreleased]`를 참고합니다.
+
+## 제공 표면
+
+| 표면 | 진입점 | 설명 |
+|------|--------|------|
+| Python 라이브러리 | `from khoa import KhoaClient` | KHOA ODMI OpenAPI 범용/typed 호출을 동기·비동기(`KhoaClient.aio()`)로 제공 |
+
+## 먼저 읽을 문서
+
+| 필요 정보 | 문서 |
+|-----------|------|
+| KHOA ODMI 서비스 카탈로그, `api_id`, 필수 파라미터 | [`docs/openapi-catalog.md`](docs/openapi-catalog.md) |
+| 디버그 실행, fixture 저장, replay 테스트 구조 | [`docs/debug-fixtures.md`](docs/debug-fixtures.md) |
+| 로컬 검증, live test 실행, data.go.kr 403 처리 | [`docs/testing.md`](docs/testing.md) |
+| 반복하지 말아야 할 작업 실수와 환경 함정 | [`docs/repeated-mistakes.md`](docs/repeated-mistakes.md) |
+| 구조적 의사결정 기록 | [`docs/decisions.md`](docs/decisions.md) |
 
 ## 설치
 
@@ -290,3 +312,37 @@ PYKHOA_RUN_LIVE=1 DATA_GO_KR_SERVICE_KEY=... python -m pytest -m live
 data.go.kr가 HTTP 403을 반환하면 게이트웨이에는 도달했지만 해당 KHOA ODMI
 서비스 활용 권한이 없는 상태일 가능성이 큽니다. data.go.kr에서 대상 서비스
 활용신청/승인을 받은 뒤 다시 실행합니다.
+
+## 데이터와 외부 API
+
+| 출처 | 설명 |
+|------|------|
+| data.go.kr (KHOA ODMI 국가중점 OpenAPI) | `DATA_GO_KR_SERVICE_KEY`로 호출하는 기본 게이트웨이. ROMS, 해양레저지수, 해무, 조위/조류 관측·예측 등 46개 서비스 상세 페이지를 포함 |
+| KHOA 직접 endpoint (`khoa.go.kr/oceandata/api/beach/search.do`, `getOpenApiInfo.do`) | `KHOA_DIRECT_SERVICE_KEY` 또는 `service_key=`로 호출하는 해수욕장 검색과 KHOA 포털 관측소 목록 |
+| 공공데이터포털 해양수산부 해수욕장정보(`OceansBeachInfoService1`) | KHOA ODMI 목록에는 없지만 TripMate 해수욕장 장소 feature의 기준 데이터라 안정된 public API로 직접 노출 |
+| VWorld 역지오코딩 (선택, `python-vworld-api`) | `VWORLD_API_KEY`가 있을 때 `include_address=True`로 주소를 보강 |
+
+## 디렉터리 개요
+
+| 경로 | 역할 |
+|------|------|
+| `src/khoa/client.py` | 사용자 진입점, 범용 호출, 페이지 처리, typed helper |
+| `src/khoa/_http.py` | HTTP transport, retry, 상태 코드/XML 오류 매핑 |
+| `src/khoa/_convert.py` | 문자열/날짜/숫자/CSV 파라미터 변환 |
+| `src/khoa/services.py` | KHOA ODMI 서비스 카탈로그 |
+| `src/khoa/models.py` | 사용자에게 반환하는 Pydantic 모델 |
+| `src/khoa/observatories.py` | KHOA 포털 관측소 목록 조회와 주소 보강 |
+| `src/khoa/exceptions.py` | 예외 계층 |
+| `tests/` | 네트워크 없는 단위 테스트와 opt-in live test |
+| `docs/` | 서비스 카탈로그, 테스트/디버그 가이드, 의사결정 기록 |
+
+## 문서와 기여 규칙
+
+- Markdown 문서는 한글로 작성합니다. 코드 식별자, API 필드명, 명령어, URL, provider 원문 용어만 예외입니다.
+- 작업 전 [`AGENTS.md`](AGENTS.md)를 먼저 확인합니다.
+- 새 public API, 모델, 예외, live test 정책을 추가하면 관련 문서(`README.md`, `docs/openapi-catalog.md` 등)도 같은 변경 안에서 갱신합니다.
+- 구조적 의사결정은 [`docs/decisions.md`](docs/decisions.md)에 기록합니다.
+
+## 법적 고지
+
+이 저장소의 라이선스(GPL-3.0-or-later, [`LICENSE`](LICENSE) 참고)는 이 저장소에 포함된 소스 코드와 문서에만 적용됩니다. 이 라이브러리가 감싸는 국립해양조사원 KHOA ODMI OpenAPI, data.go.kr 게이트웨이, 공공데이터포털, VWorld 등 외부 데이터/API의 이용은 각 제공 기관의 이용약관과 재배포 조건을 따르며, 이 패키지는 그 데이터의 정확성이나 법적 효력을 보장하지 않습니다.
