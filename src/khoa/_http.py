@@ -9,9 +9,11 @@ from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from typing import Any, Protocol, TypeVar, cast
+from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
 import httpx
+import requests
 
 from ._convert import normalize_service_key, without_none
 from .exceptions import (
@@ -47,6 +49,7 @@ class SessionLike(Protocol):
 TRANSIENT_STATUSES = {429, 500, 502, 503, 504}
 DEFAULT_USER_AGENT = "python-khoa-api/0.1 (+https://www.khoa.go.kr/oceandata/openapi/odmi)"
 DEFAULT_MAX_RPS = 5.0
+ALLOWED_BASE_URL_HOSTS = {"apis.data.go.kr"}
 R = TypeVar("R")
 
 
@@ -77,7 +80,11 @@ def build_session(retries: int = 3, *, timeout: float = 10.0) -> SessionLike:
 
 
 class AsyncTokenBucket:
-    """단순 async 토큰 버킷 속도 제한기."""
+    """단순 async 토큰 버킷 속도 제한기.
+
+    인스턴스별로 격리되며 여러 인스턴스 간에 공유되지 않으므로, 동일한 upstream
+    quota를 공유하려면 하나의 KhoaClient/KhoaHttp 인스턴스를 재사용해야 합니다.
+    """
 
     def __init__(self, max_rps: float = DEFAULT_MAX_RPS) -> None:
         if max_rps <= 0:
@@ -120,7 +127,16 @@ class KhoaHttp:
         if not key:
             raise KhoaAuthError("service_key is required", failure_kind="auth")
         self.service_key = key
-        self.base_url = base_url.rstrip("/")
+        base_url = base_url.rstrip("/")
+        parsed_base_url = urlsplit(base_url)
+        if (
+            parsed_base_url.scheme != "https"
+            or parsed_base_url.hostname not in ALLOWED_BASE_URL_HOSTS
+        ):
+            raise ValueError(
+                f"base_url must use https and host must be one of {sorted(ALLOWED_BASE_URL_HOSTS)}"
+            )
+        self.base_url = base_url
         self.service_key_param = service_key_param
         self.session = session
         self.timeout = timeout
@@ -236,14 +252,17 @@ class KhoaHttp:
         return payload, url
 
     async def aclose(self) -> None:
-        """외부에서 주입한 httpx async 세션이 있으면 닫습니다."""
+        """외부에서 주입한 세션이 있으면 닫습니다."""
 
-        close = getattr(self.session, "aclose", None)
-        if close is None:
+        aclose = getattr(self.session, "aclose", None)
+        if aclose is not None:
+            result = aclose()
+            if inspect.isawaitable(result):
+                await result
             return
-        result = close()
-        if inspect.isawaitable(result):
-            await result
+        close = getattr(self.session, "close", None)
+        if close is not None:
+            await asyncio.to_thread(close)
 
     def close(self) -> None:
         """동기 facade에서 세션을 닫습니다."""
@@ -266,7 +285,7 @@ class KhoaHttp:
             await self._bucket.acquire()
             try:
                 response = await self._request_once(url, request_params)
-            except httpx.HTTPError as exc:
+            except (httpx.HTTPError, requests.exceptions.RequestException) as exc:
                 message = _redact_secret(str(exc), service_key)
                 last_error = KhoaRequestError(
                     f"HTTP transport error: {message}",
@@ -277,10 +296,13 @@ class KhoaHttp:
                 if attempt < attempts - 1:
                     await asyncio.sleep(_retry_wait(attempt))
                     continue
-                raise last_error from exc
+                raise last_error from None
 
             if response.status_code in TRANSIENT_STATUSES and attempt < attempts - 1:
-                await asyncio.sleep(_retry_wait(attempt))
+                wait = _retry_wait(attempt)
+                if response.status_code == 429:
+                    wait = _retry_after_wait(response) or wait
+                await asyncio.sleep(wait)
                 continue
             return response
 
@@ -305,6 +327,20 @@ class KhoaHttp:
 
 def _retry_wait(attempt: int) -> float:
     return min(8.0, 2.0**attempt)
+
+
+def _retry_after_wait(response: ResponseLike) -> float | None:
+    headers = getattr(response, "headers", None)
+    if not headers:
+        return None
+    value = headers.get("Retry-After")
+    if value is None:
+        return None
+    try:
+        seconds = float(value)
+    except ValueError:
+        return None
+    return max(0.0, min(seconds, 8.0))
 
 
 def _raise_for_status(response: ResponseLike, *, endpoint: str, service_key: str) -> None:
