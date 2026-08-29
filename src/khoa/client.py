@@ -46,6 +46,7 @@ from .observatories import (
     VworldReverseGeocoderLike,
     enrich_observatory_addresses,
 )
+from .pagination import apaginate, apaginate_many, paginate, paginate_many, validate_page_params
 from .services import (
     DEFAULT_BASE_URL,
     SERVICE_DEFINITIONS,
@@ -419,31 +420,20 @@ class KhoaClient:
     ) -> Iterator[Page[RawRecord]]:
         """선택적 안전 제한과 함께 KHOA 페이지 응답을 순회합니다."""
 
-        next_page = page_no
-        pages = 0
-        yielded = 0
-        while True:
-            page = self.fetch(
+        return paginate(
+            lambda next_page: self.fetch(
                 service,
                 params,
                 page_no=next_page,
                 num_of_rows=num_of_rows,
                 **kwargs,
-            )
-            if not page.items:
-                return
-            yield page
-            pages += 1
-            yielded += len(page.items)
-            if max_pages is not None and pages >= max_pages:
-                return
-            if max_items is not None and yielded >= max_items:
-                return
-            if not page.has_next_page:
-                return
-            next_page += 1
+            ),
+            start_page=page_no,
+            max_pages=max_pages,
+            max_items=max_items,
+        )
 
-    async def aiter_pages(
+    def aiter_pages(
         self,
         service: str | ServiceDefinition,
         params: Mapping[str, Any] | None = None,
@@ -456,29 +446,18 @@ class KhoaClient:
     ) -> AsyncIterator[Page[RawRecord]]:
         """선택적 안전 제한과 함께 KHOA 페이지 응답을 비동기로 순회합니다."""
 
-        next_page = page_no
-        pages = 0
-        yielded = 0
-        while True:
-            page = await self.afetch(
+        return apaginate(
+            lambda next_page: self.afetch(
                 service,
                 params,
                 page_no=next_page,
                 num_of_rows=num_of_rows,
                 **kwargs,
-            )
-            if not page.items:
-                return
-            yield page
-            pages += 1
-            yielded += len(page.items)
-            if max_pages is not None and pages >= max_pages:
-                return
-            if max_items is not None and yielded >= max_items:
-                return
-            if not page.has_next_page:
-                return
-            next_page += 1
+            ),
+            start_page=page_no,
+            max_pages=max_pages,
+            max_items=max_items,
+        )
 
     def roms(
         self,
@@ -696,10 +675,7 @@ class KhoaClient:
     ) -> Page[OceanBeachInfo]:
         """공공데이터포털 해양수산부 해수욕장정보 한 페이지를 비동기로 반환합니다."""
 
-        if page_no < 1:
-            raise ValueError("page_no must be >= 1")
-        if not 1 <= num_of_rows <= 1000:
-            raise ValueError("num_of_rows must be between 1 and 1000")
+        validate_page_params(page_no, num_of_rows)
         sido_name = sido_nm.strip()
         if not sido_name:
             raise KhoaRequestError(
@@ -774,31 +750,26 @@ class KhoaClient:
         """시도명 목록을 순회하며 해수욕장정보 페이지를 모두 반환합니다."""
 
         names = tuple(sido_names or OCEANS_BEACH_INFO_DEFAULT_SIDO_NAMES)
-        yielded_pages = 0
-        yielded_items = 0
-        for sido_name in names:
-            next_page = page_no
-            while True:
-                page = self.oceans_beach_info(
+        fetchers = (
+            (
+                lambda next_page, sido_name=sido_name: self.oceans_beach_info(
                     sido_name,
                     page_no=next_page,
                     num_of_rows=num_of_rows,
                     response_type=response_type,
                     service_key=service_key,
                 )
-                if page.items:
-                    yield page
-                    yielded_pages += 1
-                    yielded_items += len(page.items)
-                if max_pages is not None and yielded_pages >= max_pages:
-                    return
-                if max_items is not None and yielded_items >= max_items:
-                    return
-                if not page.items or not page.has_next_page:
-                    break
-                next_page += 1
+            )
+            for sido_name in names
+        )
+        return paginate_many(
+            fetchers,
+            start_page=page_no,
+            max_pages=max_pages,
+            max_items=max_items,
+        )
 
-    async def aiter_oceans_beach_info_pages(
+    def aiter_oceans_beach_info_pages(
         self,
         *,
         sido_names: tuple[str, ...] | list[str] | None = None,
@@ -812,29 +783,24 @@ class KhoaClient:
         """시도명 목록을 순회하며 해수욕장정보 페이지를 비동기로 반환합니다."""
 
         names = tuple(sido_names or OCEANS_BEACH_INFO_DEFAULT_SIDO_NAMES)
-        yielded_pages = 0
-        yielded_items = 0
-        for sido_name in names:
-            next_page = page_no
-            while True:
-                page = await self.aoceans_beach_info(
+        fetchers = (
+            (
+                lambda next_page, sido_name=sido_name: self.aoceans_beach_info(
                     sido_name,
                     page_no=next_page,
                     num_of_rows=num_of_rows,
                     response_type=response_type,
                     service_key=service_key,
                 )
-                if page.items:
-                    yield page
-                    yielded_pages += 1
-                    yielded_items += len(page.items)
-                if max_pages is not None and yielded_pages >= max_pages:
-                    return
-                if max_items is not None and yielded_items >= max_items:
-                    return
-                if not page.items or not page.has_next_page:
-                    break
-                next_page += 1
+            )
+            for sido_name in names
+        )
+        return apaginate_many(
+            fetchers,
+            start_page=page_no,
+            max_pages=max_pages,
+            max_items=max_items,
+        )
 
     def sea_split_index(self, **kwargs: Any) -> Page[MarineIndexPlace]:
         """바다갈라짐 체험지수를 장소별 DTO로 반환합니다."""
@@ -1036,10 +1002,7 @@ class KhoaClient:
         validate_required: bool,
         extra: Mapping[str, Any],
     ) -> dict[str, Any]:
-        if page_no < 1:
-            raise ValueError("page_no must be >= 1")
-        if not 1 <= num_of_rows <= 1000:
-            raise ValueError("num_of_rows must be between 1 and 1000")
+        validate_page_params(page_no, num_of_rows)
 
         merged: dict[str, Any] = {}
         if params:
