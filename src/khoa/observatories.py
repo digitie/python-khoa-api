@@ -8,20 +8,21 @@ KHOA ODMI 서비스는 보통 data.go.kr 엔드포인트로 제공되지만, 포
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import importlib
+import inspect
 import json
 import math
 import re
-import time
 import zlib
-from collections.abc import Mapping
+from collections.abc import Awaitable, Mapping
 from os import PathLike
 from typing import Any, Final, Protocol, cast
 
-import requests
+import httpx
 
-from ._http import TRANSIENT_STATUSES
+from ._http import DEFAULT_USER_AGENT, TRANSIENT_STATUSES, run_async
 from .exceptions import KhoaParseError, KhoaRequestError, KhoaServerError
 from .models import Observatory
 
@@ -64,7 +65,11 @@ class PortalResponseLike(Protocol):
 
 
 class PortalSessionLike(Protocol):
-    """KHOA 포털 AJAX 호출에 필요한 최소 세션 프로토콜."""
+    """KHOA 포털 AJAX 호출에 필요한 최소 세션 프로토콜.
+
+    동기 세션(예: `requests.Session`)과 async 세션 모두 지원하기 위해
+    `post()`가 응답 또는 응답의 Awaitable을 반환할 수 있게 합니다.
+    """
 
     def post(
         self,
@@ -73,13 +78,20 @@ class PortalSessionLike(Protocol):
         data: Mapping[str, Any],
         headers: Mapping[str, str],
         timeout: float,
-    ) -> PortalResponseLike: ...
+    ) -> PortalResponseLike | Awaitable[PortalResponseLike]: ...
 
 
 class VworldReverseGeocoderLike(Protocol):
-    """VWorld 역지오코딩 클라이언트에 필요한 최소 프로토콜."""
+    """VWorld 역지오코딩 클라이언트에 필요한 최소 프로토콜.
 
-    def reverse_geocode_latlon(self, lat: float, lon: float, **kwargs: Any) -> Mapping[str, Any]:
+    동기 클라이언트와 async 클라이언트(`AsyncVworldClient`) 모두 지원하기
+    위해 `reverse_geocode_latlon()`이 결과 또는 결과의 Awaitable을 반환할
+    수 있게 합니다.
+    """
+
+    def reverse_geocode_latlon(
+        self, lat: float, lon: float, **kwargs: Any
+    ) -> Mapping[str, Any] | Awaitable[Mapping[str, Any]]:
         """WGS84 위도/경도 좌표를 VWorld 주소 응답으로 변환합니다."""
 
         ...
@@ -483,21 +495,39 @@ def fetch_openapi_info(
 ) -> dict[str, Any]:
     """비표준 AJAX 엔드포인트에서 KHOA 포털 OpenAPI 상세 JSON을 가져옵니다."""
 
-    portal_session = session or cast(PortalSessionLike, requests.Session())
+    return run_async(
+        lambda: afetch_openapi_info(
+            api_id, session=session, timeout=timeout, url=url, retries=retries
+        )
+    )
+
+
+async def afetch_openapi_info(
+    api_id: str | int,
+    *,
+    session: PortalSessionLike | None = None,
+    timeout: float = 10.0,
+    url: str = KHOA_OPENAPI_INFO_URL,
+    retries: int = 3,
+) -> dict[str, Any]:
+    """비표준 AJAX 엔드포인트에서 KHOA 포털 OpenAPI 상세 JSON을 비동기로 가져옵니다."""
+
     text_id = str(api_id)
     attempts = max(1, retries + 1)
+    headers = {
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": f"{KHOA_OPENAPI_DETAIL_URL}?id={text_id}",
+    }
     for attempt in range(attempts):
-        response = portal_session.post(
+        response = await _portal_post(
+            session,
             url,
             data={"id": text_id},
-            headers={
-                "X-Requested-With": "XMLHttpRequest",
-                "Referer": f"{KHOA_OPENAPI_DETAIL_URL}?id={text_id}",
-            },
+            headers=headers,
             timeout=timeout,
         )
         if response.status_code in TRANSIENT_STATUSES and attempt < attempts - 1:
-            time.sleep(min(8.0, 2.0**attempt))
+            await asyncio.sleep(min(8.0, 2.0**attempt))
             continue
         break
     _raise_for_portal_status(response, api_id=text_id)
@@ -509,6 +539,27 @@ def fetch_openapi_info(
             failure_kind="parse",
         )
     return dict(payload)
+
+
+async def _portal_post(
+    session: PortalSessionLike | None,
+    url: str,
+    *,
+    data: Mapping[str, Any],
+    headers: Mapping[str, str],
+    timeout: float,
+) -> PortalResponseLike:
+    if session is not None:
+        result = session.post(url, data=data, headers=headers, timeout=timeout)
+        if inspect.isawaitable(result):
+            return await result
+        return result
+    async with httpx.AsyncClient(
+        headers={"User-Agent": DEFAULT_USER_AGENT},
+        follow_redirects=True,
+    ) as client:
+        response = await client.post(url, data=data, headers=headers, timeout=timeout)
+        return cast(PortalResponseLike, response)
 
 
 def fetch_observatory_list(
@@ -524,7 +575,34 @@ def fetch_observatory_list(
 ) -> tuple[Observatory, ...]:
     """KHOA 비표준 OpenAPI 상세 엔드포인트에서 관측소 목록을 가져옵니다."""
 
-    payload = fetch_openapi_info(api_id, session=session, timeout=timeout)
+    return run_async(
+        lambda: afetch_observatory_list(
+            api_id,
+            session=session,
+            timeout=timeout,
+            include_address=include_address,
+            vworld_client=vworld_client,
+            vworld_api_key=vworld_api_key,
+            vworld_domain=vworld_domain,
+            vworld_env_file=vworld_env_file,
+        )
+    )
+
+
+async def afetch_observatory_list(
+    api_id: str | int = BEACH_OPENAPI_ID,
+    *,
+    session: PortalSessionLike | None = None,
+    timeout: float = 10.0,
+    include_address: bool = False,
+    vworld_client: VworldReverseGeocoderLike | None = None,
+    vworld_api_key: str | None = None,
+    vworld_domain: str | None = None,
+    vworld_env_file: str | PathLike[str] | None = None,
+) -> tuple[Observatory, ...]:
+    """KHOA 비표준 OpenAPI 상세 엔드포인트에서 관측소 목록을 비동기로 가져옵니다."""
+
+    payload = await afetch_openapi_info(api_id, session=session, timeout=timeout)
     rows = payload.get("observatoryList")
     if not isinstance(rows, list):
         raise KhoaParseError(
@@ -535,7 +613,7 @@ def fetch_observatory_list(
     observatories = _parse_observatories(rows)
     if not include_address:
         return observatories
-    return enrich_observatory_addresses(
+    return await aenrich_observatory_addresses(
         observatories,
         vworld_client=vworld_client,
         vworld_api_key=vworld_api_key,
@@ -569,6 +647,30 @@ def fetch_beach_observatories(
     )
 
 
+async def afetch_beach_observatories(
+    *,
+    session: PortalSessionLike | None = None,
+    timeout: float = 10.0,
+    include_address: bool = False,
+    vworld_client: VworldReverseGeocoderLike | None = None,
+    vworld_api_key: str | None = None,
+    vworld_domain: str | None = None,
+    vworld_env_file: str | PathLike[str] | None = None,
+) -> tuple[Observatory, ...]:
+    """KHOA OpenAPI 상세 id 36의 live 해수욕장 관측소 목록을 비동기로 가져옵니다."""
+
+    return await afetch_observatory_list(
+        BEACH_OPENAPI_ID,
+        session=session,
+        timeout=timeout,
+        include_address=include_address,
+        vworld_client=vworld_client,
+        vworld_api_key=vworld_api_key,
+        vworld_domain=vworld_domain,
+        vworld_env_file=vworld_env_file,
+    )
+
+
 def enrich_observatory_addresses(
     observatories: tuple[Observatory, ...],
     *,
@@ -582,6 +684,34 @@ def enrich_observatory_addresses(
 ) -> tuple[Observatory, ...]:
     """VWorld 역지오코딩 결과를 관측소 목록에 붙입니다."""
 
+    return run_async(
+        lambda: aenrich_observatory_addresses(
+            observatories,
+            vworld_client=vworld_client,
+            vworld_api_key=vworld_api_key,
+            vworld_domain=vworld_domain,
+            vworld_env_file=vworld_env_file,
+            timeout=timeout,
+            search_offsets_degrees=search_offsets_degrees,
+            require_road_address=require_road_address,
+        )
+    )
+
+
+async def aenrich_observatory_addresses(
+    observatories: tuple[Observatory, ...],
+    *,
+    vworld_client: VworldReverseGeocoderLike | None = None,
+    vworld_api_key: str | None = None,
+    vworld_domain: str | None = None,
+    vworld_env_file: str | PathLike[str] | None = None,
+    timeout: float = 10.0,
+    search_offsets_degrees: tuple[float, ...] = DEFAULT_ADDRESS_SEARCH_OFFSETS_DEGREES,
+    require_road_address: bool = True,
+) -> tuple[Observatory, ...]:
+    """VWorld 역지오코딩 결과를 관측소 목록에 비동기로 붙입니다."""
+
+    owns_client = vworld_client is None
     client = _resolve_vworld_client(
         vworld_client,
         vworld_api_key=vworld_api_key,
@@ -589,17 +719,20 @@ def enrich_observatory_addresses(
         vworld_env_file=vworld_env_file,
         timeout=timeout,
     )
-    return tuple(
-        observatory.model_copy(
-            update=_lookup_vworld_address_fields(
+    try:
+        results: list[Observatory] = []
+        for observatory in observatories:
+            fields = await _alookup_vworld_address_fields(
                 client,
                 observatory,
                 search_offsets_degrees=search_offsets_degrees,
                 require_road_address=require_road_address,
             )
-        )
-        for observatory in observatories
-    )
+            results.append(observatory.model_copy(update=fields))
+        return tuple(results)
+    finally:
+        if owns_client:
+            await _aclose_vworld_client(client)
 
 
 def _resolve_vworld_client(
@@ -622,7 +755,14 @@ def _resolve_vworld_client(
             retryable=False,
         ) from exc
 
-    client_class = cast(Any, module).VworldClient
+    client_class = getattr(module, "AsyncVworldClient", None)
+    if client_class is None:
+        raise KhoaRequestError(
+            "주소 보강에는 AsyncVworldClient를 제공하는 python-vworld-api 버전이 필요합니다.",
+            endpoint="https://api.vworld.kr/req/address",
+            failure_kind="request",
+            retryable=False,
+        )
     kwargs: dict[str, Any] = {"timeout": timeout}
     if vworld_api_key is not None:
         kwargs["api_key"] = vworld_api_key
@@ -636,7 +776,19 @@ def _resolve_vworld_client(
     return cast(VworldReverseGeocoderLike, client_class(**kwargs))
 
 
-def _lookup_vworld_address_fields(
+async def _aclose_vworld_client(client: VworldReverseGeocoderLike) -> None:
+    aclose = getattr(client, "aclose", None)
+    if aclose is not None:
+        result = aclose()
+        if inspect.isawaitable(result):
+            await result
+        return
+    close = getattr(client, "close", None)
+    if close is not None:
+        await asyncio.to_thread(close)
+
+
+async def _alookup_vworld_address_fields(
     client: VworldReverseGeocoderLike,
     observatory: Observatory,
     *,
@@ -654,13 +806,17 @@ def _lookup_vworld_address_fields(
         search_offsets_degrees,
     ):
         try:
-            payload = client.reverse_geocode_latlon(
+            result = client.reverse_geocode_latlon(
                 latitude,
                 longitude,
                 type="both",
                 zipcode=True,
                 simple=False,
             )
+            if inspect.isawaitable(result):
+                payload = await result
+            else:
+                payload = result
         except Exception as exc:
             if _is_vworld_not_found(exc):
                 continue

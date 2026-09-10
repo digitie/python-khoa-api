@@ -280,6 +280,36 @@ vworld = VworldClient.from_env()
 live = fetch_observatory_list("36", include_address=True, vworld_client=vworld)
 ```
 
+`fetch_observatory_list()`, `fetch_openapi_info()`, `fetch_beach_observatories()`,
+`enrich_observatory_addresses()`는 모두 `afetch_observatory_list()` 등 `a` 접두 비동기
+버전이 있습니다. 이벤트 루프 안에서는 sync 버전 대신 async 버전을 사용해야 루프를
+막지 않습니다. 주소 보강에 async 버전을 쓰면 `vworld_client`에는 동기 `VworldClient`
+대신 `AsyncVworldClient`를 넘깁니다.
+
+```python
+import asyncio
+
+from vworld import AsyncVworldClient
+from khoa import afetch_observatory_list
+
+
+async def main() -> None:
+    async with AsyncVworldClient.from_env() as vworld:
+        live = await afetch_observatory_list(
+            "36", include_address=True, vworld_client=vworld
+        )
+        print(len(live))
+
+asyncio.run(main())
+```
+
+동기 facade(`fetch_observatory_list()`, `KhoaClient.beach_index()` 등)에는 동기
+`VworldClient`/`requests.Session` 계열만, async facade(`afetch_observatory_list()`,
+`AsyncKhoaClient`, `KhoaClient.abeach_index()` 등)에는 async `AsyncVworldClient` 계열만
+넘기세요. 방향을 섞으면(예: 이미 실행 중인 이벤트 루프 안에서 sync facade에
+`AsyncVworldClient`를 넘기거나, async facade에 동기 클라이언트를 넘기는 경우) 각각
+"다른 루프에 연결된 Future" 오류나 이벤트 루프 블로킹이 발생할 수 있습니다.
+
 ## 카탈로그
 
 ```python

@@ -44,6 +44,7 @@ from .observatories import (
     BEACH_OBSERVATORIES,
     DEFAULT_ADDRESS_SEARCH_OFFSETS_DEGREES,
     VworldReverseGeocoderLike,
+    aenrich_observatory_addresses,
     enrich_observatory_addresses,
 )
 from .pagination import apaginate, apaginate_many, paginate, paginate_many, validate_page_params
@@ -590,7 +591,7 @@ class KhoaClient:
             validate_required=validate_required,
             **kwargs,
         )
-        return _beach_index_place_page(
+        return await _abeach_index_place_page(
             page,
             include_address=include_address,
             vworld_client=vworld_client,
@@ -948,7 +949,7 @@ class KhoaClient:
             validate_required=validate_required,
             **kwargs,
         )
-        return _marine_index_place_page(
+        return await _amarine_index_place_page(
             page,
             service_key=service,
             name_keys=_MARINE_INDEX_NAME_KEYS[service],
@@ -1385,7 +1386,44 @@ def _raise_for_result_code(
     )
 
 
-def _beach_index_place_page(
+_BeachIndexKey = tuple[str, str, float, float]
+
+
+def _group_beach_index_rows(
+    page: Page[RawRecord],
+) -> tuple[dict[_BeachIndexKey, list[RawRecord]], dict[_BeachIndexKey, Observatory]]:
+    groups: dict[_BeachIndexKey, list[RawRecord]] = {}
+    observatories: dict[_BeachIndexKey, Observatory] = {}
+    for row in page.items:
+        observatory = _beach_index_observatory(row)
+        if observatory is None:
+            continue
+        key = _beach_index_place_key(observatory)
+        groups.setdefault(key, []).append(row)
+        observatories.setdefault(key, observatory)
+    return groups, observatories
+
+
+def _finish_beach_index_place_page(
+    page: Page[RawRecord],
+    groups: dict[_BeachIndexKey, list[RawRecord]],
+    observatories: dict[_BeachIndexKey, Observatory],
+) -> Page[BeachIndexPlace]:
+    items = tuple(
+        _beach_index_place_from_rows(observatories[key], rows)
+        for key, rows in groups.items()
+    )
+    return Page[BeachIndexPlace](
+        items=items,
+        total_count=page.total_count,
+        page_no=page.page_no,
+        num_of_rows=page.num_of_rows,
+        raw=page.raw,
+        context=page.context,
+    )
+
+
+async def _abeach_index_place_page(
     page: Page[RawRecord],
     *,
     include_address: bool,
@@ -1395,18 +1433,10 @@ def _beach_index_place_page(
     vworld_env_file: str | PathLike[str] | None,
     search_offsets_degrees: tuple[float, ...],
 ) -> Page[BeachIndexPlace]:
-    groups: dict[tuple[str, str, float, float], list[RawRecord]] = {}
-    observatories: dict[tuple[str, str, float, float], Observatory] = {}
-    for row in page.items:
-        observatory = _beach_index_observatory(row)
-        if observatory is None:
-            continue
-        key = _beach_index_place_key(observatory)
-        groups.setdefault(key, []).append(row)
-        observatories.setdefault(key, observatory)
+    groups, observatories = _group_beach_index_rows(page)
 
     if include_address and observatories:
-        observatories = _beach_index_address_observatories(
+        observatories = await _abeach_index_address_observatories(
             observatories,
             vworld_client=vworld_client,
             vworld_api_key=vworld_api_key,
@@ -1415,19 +1445,7 @@ def _beach_index_place_page(
             search_offsets_degrees=search_offsets_degrees,
         )
 
-    items = tuple(
-        _beach_index_place_from_rows(observatories[key], rows)
-        for key, rows in groups.items()
-    )
-
-    return Page[BeachIndexPlace](
-        items=items,
-        total_count=page.total_count,
-        page_no=page.page_no,
-        num_of_rows=page.num_of_rows,
-        raw=page.raw,
-        context=page.context,
-    )
+    return _finish_beach_index_place_page(page, groups, observatories)
 
 
 def _beach_index_observatory(row: Mapping[str, Any]) -> Observatory | None:
@@ -1460,7 +1478,7 @@ def _beach_index_place_key(observatory: Observatory) -> tuple[str, str, float, f
     )
 
 
-def _beach_index_address_observatories(
+async def _abeach_index_address_observatories(
     observatories: dict[tuple[str, str, float, float], Observatory],
     *,
     vworld_client: VworldReverseGeocoderLike | None,
@@ -1484,7 +1502,7 @@ def _beach_index_address_observatories(
         _beach_index_lookup_observatory(observatory)
         for observatory in observatories.values()
     )
-    enriched_values = enrich_observatory_addresses(
+    enriched_values = await aenrich_observatory_addresses(
         lookup_observatories,
         vworld_client=vworld_client,
         vworld_api_key=vworld_api_key,
@@ -1955,6 +1973,53 @@ def _direct_mapping_rows(value: Any, *, endpoint: str) -> tuple[Mapping[str, Any
     )
 
 
+_MarineIndexKey = tuple[str, str, str, float, float]
+
+
+def _group_marine_index_rows(
+    page: Page[RawRecord],
+    service_key: str,
+    name_keys: tuple[str, ...],
+) -> tuple[dict[_MarineIndexKey, list[RawRecord]], dict[_MarineIndexKey, Observatory]]:
+    groups: dict[_MarineIndexKey, list[RawRecord]] = {}
+    observatories: dict[_MarineIndexKey, Observatory] = {}
+
+    for row in page.items:
+        observatory = _marine_index_observatory(row, service_key, name_keys=name_keys)
+        if observatory is None:
+            continue
+        key = _marine_index_place_key(service_key, observatory)
+        groups.setdefault(key, []).append(row)
+        observatories.setdefault(key, observatory)
+    return groups, observatories
+
+
+def _finish_marine_index_place_page(
+    page: Page[RawRecord],
+    service_key: str,
+    name_keys: tuple[str, ...],
+    groups: dict[_MarineIndexKey, list[RawRecord]],
+    observatories: dict[_MarineIndexKey, Observatory],
+) -> Page[MarineIndexPlace]:
+    items = tuple(
+        _marine_index_place_from_rows(
+            service_key,
+            name_keys,
+            observatories[key],
+            rows,
+        )
+        for key, rows in groups.items()
+    )
+    return Page[MarineIndexPlace](
+        items=items,
+        total_count=page.total_count,
+        page_no=page.page_no,
+        num_of_rows=page.num_of_rows,
+        raw=page.raw,
+        context=page.context,
+    )
+
+
 def _marine_index_place_page(
     page: Page[RawRecord],
     *,
@@ -1967,16 +2032,7 @@ def _marine_index_place_page(
     vworld_env_file: str | PathLike[str] | None,
     search_offsets_degrees: tuple[float, ...],
 ) -> Page[MarineIndexPlace]:
-    groups: dict[tuple[str, str, str, float, float], list[RawRecord]] = {}
-    observatories: dict[tuple[str, str, str, float, float], Observatory] = {}
-
-    for row in page.items:
-        observatory = _marine_index_observatory(row, service_key, name_keys=name_keys)
-        if observatory is None:
-            continue
-        key = _marine_index_place_key(service_key, observatory)
-        groups.setdefault(key, []).append(row)
-        observatories.setdefault(key, observatory)
+    groups, observatories = _group_marine_index_rows(page, service_key, name_keys)
 
     if include_address and observatories:
         enriched_values = enrich_observatory_addresses(
@@ -1997,24 +2053,43 @@ def _marine_index_place_page(
             )
         }
 
-    items = tuple(
-        _marine_index_place_from_rows(
-            service_key,
-            name_keys,
-            observatories[key],
-            rows,
-        )
-        for key, rows in groups.items()
-    )
+    return _finish_marine_index_place_page(page, service_key, name_keys, groups, observatories)
 
-    return Page[MarineIndexPlace](
-        items=items,
-        total_count=page.total_count,
-        page_no=page.page_no,
-        num_of_rows=page.num_of_rows,
-        raw=page.raw,
-        context=page.context,
-    )
+
+async def _amarine_index_place_page(
+    page: Page[RawRecord],
+    *,
+    service_key: str,
+    name_keys: tuple[str, ...],
+    include_address: bool,
+    vworld_client: VworldReverseGeocoderLike | None,
+    vworld_api_key: str | None,
+    vworld_domain: str | None,
+    vworld_env_file: str | PathLike[str] | None,
+    search_offsets_degrees: tuple[float, ...],
+) -> Page[MarineIndexPlace]:
+    groups, observatories = _group_marine_index_rows(page, service_key, name_keys)
+
+    if include_address and observatories:
+        enriched_values = await aenrich_observatory_addresses(
+            tuple(observatories.values()),
+            vworld_client=vworld_client,
+            vworld_api_key=vworld_api_key,
+            vworld_domain=vworld_domain,
+            vworld_env_file=vworld_env_file,
+            search_offsets_degrees=search_offsets_degrees,
+            require_road_address=False,
+        )
+        observatories = {
+            key: _merge_marine_index_address(original, enriched)
+            for (key, original), enriched in zip(
+                observatories.items(),
+                enriched_values,
+                strict=True,
+            )
+        }
+
+    return _finish_marine_index_place_page(page, service_key, name_keys, groups, observatories)
 
 
 def _marine_index_observatory(

@@ -5,6 +5,23 @@
 
 ## [Unreleased]
 
+### Added
+
+- `afetch_openapi_info()`, `afetch_observatory_list()`, `afetch_beach_observatories()`,
+  `aenrich_observatory_addresses()`를 추가했습니다. KHOA 포털 관측소 목록 조회와 VWorld
+  주소 보강을 `httpx.AsyncClient`/`AsyncVworldClient` 기반으로 완전히 비동기 실행할 수
+  있습니다.
+
+### Fixed
+
+- `abeach_index()`, `asurfing_index()` 등 `a` 접두 typed helper에서 `include_address=True`와
+  live VWorld 옵션을 함께 쓰면 동기 주소 보강 호출이 코루틴 안에서 그대로 실행되어
+  호출자의 이벤트 루프를 막던 문제를 수정했습니다. 이제 `AsyncVworldClient`처럼 실제
+  async 클라이언트를 `vworld_client`로 넘겨도 정상 동작합니다.
+- `vworld_client`를 넘기지 않고 `python-vworld-api`가 `AsyncVworldClient`를 제공하지
+  않는 구버전일 때, 불명확한 `AttributeError` 대신 안내 메시지가 있는
+  `KhoaRequestError`를 던지도록 수정했습니다.
+
 ### Changed
 
 - 문서 구조를 저장소 간 컨벤션(kor-travel-geo 기준)에 맞춰 정리했습니다.
