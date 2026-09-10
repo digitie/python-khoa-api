@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from datetime import UTC, date, datetime
 from os import PathLike
 from types import TracebackType
@@ -16,7 +16,7 @@ from ._convert import (
     to_yyyymmdd,
     without_none,
 )
-from ._http import KhoaHttp, SessionLike, run_async
+from ._http import KhoaHttp, SessionLike
 from .debug import DebugRun, debug_error, redact_sensitive
 from .exceptions import (
     KhoaAuthError,
@@ -45,9 +45,8 @@ from .observatories import (
     DEFAULT_ADDRESS_SEARCH_OFFSETS_DEGREES,
     VworldReverseGeocoderLike,
     aenrich_observatory_addresses,
-    enrich_observatory_addresses,
 )
-from .pagination import apaginate, apaginate_many, paginate, paginate_many, validate_page_params
+from .pagination import apaginate, apaginate_many, validate_page_params
 from .services import (
     DEFAULT_BASE_URL,
     SERVICE_DEFINITIONS,
@@ -176,22 +175,16 @@ class KhoaClient:
             max_rps=max_rps,
         )
 
-    def __enter__(self) -> KhoaClient:
+    async def __aenter__(self) -> KhoaClient:
         return self
 
-    def __exit__(
+    async def __aexit__(
         self,
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
-
-    def close(self) -> None:
-        """동기 facade에서 내부 HTTP 세션을 닫습니다."""
-
-        self._http.close()
-        self.closed = True
+        await self.aclose()
 
     async def aclose(self) -> None:
         """비동기 경로에서 내부 HTTP 세션을 닫습니다."""
@@ -243,45 +236,16 @@ class KhoaClient:
 
         return get_service(key)
 
-    def __getattr__(self, name: str) -> Callable[..., Page[RawRecord]]:
+    def __getattr__(self, name: str) -> Callable[..., Awaitable[Page[RawRecord]]]:
         try:
             service = get_service(name)
         except KeyError as exc:
             raise AttributeError(name) from exc
 
-        def caller(**kwargs: Any) -> Page[RawRecord]:
-            return self.fetch(service, **kwargs)
+        async def caller(**kwargs: Any) -> Page[RawRecord]:
+            return await self.afetch(service, **kwargs)
 
         return caller
-
-    def fetch(
-        self,
-        service: str | ServiceDefinition,
-        params: Mapping[str, Any] | None = None,
-        *,
-        page_no: int = 1,
-        num_of_rows: int = 10,
-        response_type: str = "json",
-        include: str | tuple[str, ...] | list[str] | None = None,
-        exclude: str | tuple[str, ...] | list[str] | None = None,
-        validate_required: bool = True,
-        **kwargs: Any,
-    ) -> Page[RawRecord]:
-        """임의 KHOA ODMI 서비스를 호출하고 정규화된 원문 item mapping을 반환합니다."""
-
-        return run_async(
-            lambda: self.afetch(
-                service,
-                params,
-                page_no=page_no,
-                num_of_rows=num_of_rows,
-                response_type=response_type,
-                include=include,
-                exclude=exclude,
-                validate_required=validate_required,
-                **kwargs,
-            )
-        )
 
     async def afetch(
         self,
@@ -325,11 +289,6 @@ class KhoaClient:
             context=_context(definition, request_url, request_params),
         )
 
-    def items(self, service: str | ServiceDefinition, **kwargs: Any) -> tuple[RawRecord, ...]:
-        """서비스를 호출하고 응답 item만 반환합니다."""
-
-        return self.fetch(service, **kwargs).items
-
     async def aitems(
         self,
         service: str | ServiceDefinition,
@@ -338,16 +297,6 @@ class KhoaClient:
         """서비스를 비동기로 호출하고 응답 item만 반환합니다."""
 
         return (await self.afetch(service, **kwargs)).items
-
-    def debug_fetch(
-        self,
-        service: str | ServiceDefinition,
-        params: Mapping[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> DebugRun:
-        """디버그 UI/fixture 생성을 위한 fetch 실행 정보를 반환합니다."""
-
-        return run_async(lambda: self.adebug_fetch(service, params, **kwargs))
 
     async def adebug_fetch(
         self,
@@ -408,32 +357,6 @@ class KhoaClient:
             catalog=catalog_entry,
         )
 
-    def iter_pages(
-        self,
-        service: str | ServiceDefinition,
-        params: Mapping[str, Any] | None = None,
-        *,
-        page_no: int = 1,
-        num_of_rows: int = 10,
-        max_pages: int | None = None,
-        max_items: int | None = None,
-        **kwargs: Any,
-    ) -> Iterator[Page[RawRecord]]:
-        """선택적 안전 제한과 함께 KHOA 페이지 응답을 순회합니다."""
-
-        return paginate(
-            lambda next_page: self.fetch(
-                service,
-                params,
-                page_no=next_page,
-                num_of_rows=num_of_rows,
-                **kwargs,
-            ),
-            start_page=page_no,
-            max_pages=max_pages,
-            max_items=max_items,
-        )
-
     def aiter_pages(
         self,
         service: str | ServiceDefinition,
@@ -458,33 +381,6 @@ class KhoaClient:
             start_page=page_no,
             max_pages=max_pages,
             max_items=max_items,
-        )
-
-    def roms(
-        self,
-        *,
-        ymin: float,
-        ymax: float,
-        xmin: float,
-        xmax: float,
-        page_no: int = 1,
-        num_of_rows: int = 10,
-        include: str | tuple[str, ...] | list[str] | None = None,
-        exclude: str | tuple[str, ...] | list[str] | None = None,
-    ) -> Page[RomsPrediction]:
-        """ROMS 수치예측 행을 가져와 typed 모델로 변환합니다."""
-
-        return run_async(
-            lambda: self.aroms(
-                ymin=ymin,
-                ymax=ymax,
-                xmin=xmin,
-                xmax=xmax,
-                page_no=page_no,
-                num_of_rows=num_of_rows,
-                include=include,
-                exclude=exclude,
-            )
         )
 
     async def aroms(
@@ -519,45 +415,6 @@ class KhoaClient:
             num_of_rows=page.num_of_rows,
             raw=page.raw,
             context=page.context,
-        )
-
-    def beach_index(
-        self,
-        params: Mapping[str, Any] | None = None,
-        *,
-        page_no: int = 1,
-        num_of_rows: int = 10,
-        response_type: str = "json",
-        include: str | tuple[str, ...] | list[str] | None = None,
-        exclude: str | tuple[str, ...] | list[str] | None = None,
-        include_address: bool = False,
-        vworld_client: VworldReverseGeocoderLike | None = None,
-        vworld_api_key: str | None = None,
-        vworld_domain: str | None = None,
-        vworld_env_file: str | PathLike[str] | None = None,
-        address_search_offsets_degrees: tuple[float, ...] = (0.0,),
-        validate_required: bool = True,
-        **kwargs: Any,
-    ) -> Page[BeachIndexPlace]:
-        """해수욕지수 행을 해수욕장별 예보 묶음 DTO로 반환합니다."""
-
-        return run_async(
-            lambda: self.abeach_index(
-                params,
-                page_no=page_no,
-                num_of_rows=num_of_rows,
-                response_type=response_type,
-                include=include,
-                exclude=exclude,
-                include_address=include_address,
-                vworld_client=vworld_client,
-                vworld_api_key=vworld_api_key,
-                vworld_domain=vworld_domain,
-                vworld_env_file=vworld_env_file,
-                address_search_offsets_degrees=address_search_offsets_degrees,
-                validate_required=validate_required,
-                **kwargs,
-            )
         )
 
     async def abeach_index(
@@ -601,25 +458,6 @@ class KhoaClient:
             search_offsets_degrees=address_search_offsets_degrees,
         )
 
-    def beach_search(
-        self,
-        beach_code: str,
-        *,
-        service_key: str | None = None,
-        env_file: str | PathLike[str] | None = ".env",
-        include_address: bool = True,
-    ) -> BeachSearchResult:
-        """KHOA `beach/search.do`에서 해수욕장 최신 관측 정보를 가져옵니다."""
-
-        return run_async(
-            lambda: self.abeach_search(
-                beach_code,
-                service_key=service_key,
-                env_file=env_file,
-                include_address=include_address,
-            )
-        )
-
     async def abeach_search(
         self,
         beach_code: str,
@@ -643,27 +481,6 @@ class KhoaClient:
             service_key=key,
         )
         return _beach_search_result(payload, include_address=include_address)
-
-    def oceans_beach_info(
-        self,
-        sido_nm: str,
-        *,
-        page_no: int = 1,
-        num_of_rows: int = 100,
-        response_type: str = "JSON",
-        service_key: str | None = None,
-    ) -> Page[OceanBeachInfo]:
-        """공공데이터포털 해양수산부 해수욕장정보 한 페이지를 반환합니다."""
-
-        return run_async(
-            lambda: self.aoceans_beach_info(
-                sido_nm,
-                page_no=page_no,
-                num_of_rows=num_of_rows,
-                response_type=response_type,
-                service_key=service_key,
-            )
-        )
 
     async def aoceans_beach_info(
         self,
@@ -737,39 +554,6 @@ class KhoaClient:
             ),
         )
 
-    def iter_oceans_beach_info_pages(
-        self,
-        *,
-        sido_names: tuple[str, ...] | list[str] | None = None,
-        page_no: int = 1,
-        num_of_rows: int = 100,
-        max_pages: int | None = None,
-        max_items: int | None = None,
-        response_type: str = "JSON",
-        service_key: str | None = None,
-    ) -> Iterator[Page[OceanBeachInfo]]:
-        """시도명 목록을 순회하며 해수욕장정보 페이지를 모두 반환합니다."""
-
-        names = tuple(sido_names or OCEANS_BEACH_INFO_DEFAULT_SIDO_NAMES)
-        fetchers = (
-            (
-                lambda next_page, sido_name=sido_name: self.oceans_beach_info(
-                    sido_name,
-                    page_no=next_page,
-                    num_of_rows=num_of_rows,
-                    response_type=response_type,
-                    service_key=service_key,
-                )
-            )
-            for sido_name in names
-        )
-        return paginate_many(
-            fetchers,
-            start_page=page_no,
-            max_pages=max_pages,
-            max_items=max_items,
-        )
-
     def aiter_oceans_beach_info_pages(
         self,
         *,
@@ -803,119 +587,40 @@ class KhoaClient:
             max_items=max_items,
         )
 
-    def sea_split_index(self, **kwargs: Any) -> Page[MarineIndexPlace]:
-        """바다갈라짐 체험지수를 장소별 DTO로 반환합니다."""
-
-        return self._marine_index("sea_split_index", **kwargs)
-
     async def asea_split_index(self, **kwargs: Any) -> Page[MarineIndexPlace]:
         """바다갈라짐 체험지수를 장소별 DTO로 비동기 반환합니다."""
 
         return await self._amarine_index("sea_split_index", **kwargs)
-
-    def fishing_index(self, *, gubun: str, **kwargs: Any) -> Page[MarineIndexPlace]:
-        """바다낚시지수를 장소별 DTO로 반환합니다."""
-
-        return self._marine_index("fishing_index", gubun=gubun, **kwargs)
 
     async def afishing_index(self, *, gubun: str, **kwargs: Any) -> Page[MarineIndexPlace]:
         """바다낚시지수를 장소별 DTO로 비동기 반환합니다."""
 
         return await self._amarine_index("fishing_index", gubun=gubun, **kwargs)
 
-    def seasickness_index(self, **kwargs: Any) -> Page[MarineIndexPlace]:
-        """뱃멀미지수를 항로/선박별 DTO로 반환합니다."""
-
-        return self._marine_index("seasickness_index", **kwargs)
-
     async def aseasickness_index(self, **kwargs: Any) -> Page[MarineIndexPlace]:
         """뱃멀미지수를 항로/선박별 DTO로 비동기 반환합니다."""
 
         return await self._amarine_index("seasickness_index", **kwargs)
-
-    def skin_scuba_index(self, **kwargs: Any) -> Page[MarineIndexPlace]:
-        """스킨스쿠버지수를 장소별 DTO로 반환합니다."""
-
-        return self._marine_index("skin_scuba_index", **kwargs)
 
     async def askin_scuba_index(self, **kwargs: Any) -> Page[MarineIndexPlace]:
         """스킨스쿠버지수를 장소별 DTO로 비동기 반환합니다."""
 
         return await self._amarine_index("skin_scuba_index", **kwargs)
 
-    def mudflat_index(self, **kwargs: Any) -> Page[MarineIndexPlace]:
-        """갯벌체험지수를 장소별 DTO로 반환합니다."""
-
-        return self._marine_index("mudflat_index", **kwargs)
-
     async def amudflat_index(self, **kwargs: Any) -> Page[MarineIndexPlace]:
         """갯벌체험지수를 장소별 DTO로 비동기 반환합니다."""
 
         return await self._amarine_index("mudflat_index", **kwargs)
-
-    def surfing_index(self, **kwargs: Any) -> Page[MarineIndexPlace]:
-        """서핑지수를 장소별 DTO로 반환합니다."""
-
-        return self._marine_index("surfing_index", **kwargs)
 
     async def asurfing_index(self, **kwargs: Any) -> Page[MarineIndexPlace]:
         """서핑지수를 장소별 DTO로 비동기 반환합니다."""
 
         return await self._amarine_index("surfing_index", **kwargs)
 
-    def sea_trip_index(self, **kwargs: Any) -> Page[MarineIndexPlace]:
-        """바다여행지수를 장소별 DTO로 반환합니다."""
-
-        return self._marine_index("sea_trip_index", **kwargs)
-
     async def asea_trip_index(self, **kwargs: Any) -> Page[MarineIndexPlace]:
         """바다여행지수를 장소별 DTO로 비동기 반환합니다."""
 
         return await self._amarine_index("sea_trip_index", **kwargs)
-
-    def _marine_index(
-        self,
-        service: str,
-        params: Mapping[str, Any] | None = None,
-        *,
-        page_no: int = 1,
-        num_of_rows: int = 10,
-        response_type: str = "json",
-        include: str | tuple[str, ...] | list[str] | None = None,
-        exclude: str | tuple[str, ...] | list[str] | None = None,
-        include_address: bool = False,
-        vworld_client: VworldReverseGeocoderLike | None = None,
-        vworld_api_key: str | None = None,
-        vworld_domain: str | None = None,
-        vworld_env_file: str | PathLike[str] | None = None,
-        address_search_offsets_degrees: tuple[
-            float, ...
-        ] = DEFAULT_ADDRESS_SEARCH_OFFSETS_DEGREES,
-        validate_required: bool = True,
-        **kwargs: Any,
-    ) -> Page[MarineIndexPlace]:
-        page = self.fetch(
-            service,
-            params,
-            page_no=page_no,
-            num_of_rows=num_of_rows,
-            response_type=response_type,
-            include=include,
-            exclude=exclude,
-            validate_required=validate_required,
-            **kwargs,
-        )
-        return _marine_index_place_page(
-            page,
-            service_key=service,
-            name_keys=_MARINE_INDEX_NAME_KEYS[service],
-            include_address=include_address,
-            vworld_client=vworld_client,
-            vworld_api_key=vworld_api_key,
-            vworld_domain=vworld_domain,
-            vworld_env_file=vworld_env_file,
-            search_offsets_degrees=address_search_offsets_degrees,
-        )
 
     async def _amarine_index(
         self,
@@ -960,16 +665,6 @@ class KhoaClient:
             vworld_env_file=vworld_env_file,
             search_offsets_degrees=address_search_offsets_degrees,
         )
-
-    def first(
-        self,
-        service: str | ServiceDefinition,
-        params: Mapping[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> RawRecord:
-        """첫 번째 원문 item을 반환하거나 KhoaNoDataError를 발생시킵니다."""
-
-        return run_async(lambda: self.afirst(service, params, **kwargs))
 
     async def afirst(
         self,
@@ -2018,42 +1713,6 @@ def _finish_marine_index_place_page(
         raw=page.raw,
         context=page.context,
     )
-
-
-def _marine_index_place_page(
-    page: Page[RawRecord],
-    *,
-    service_key: str,
-    name_keys: tuple[str, ...],
-    include_address: bool,
-    vworld_client: VworldReverseGeocoderLike | None,
-    vworld_api_key: str | None,
-    vworld_domain: str | None,
-    vworld_env_file: str | PathLike[str] | None,
-    search_offsets_degrees: tuple[float, ...],
-) -> Page[MarineIndexPlace]:
-    groups, observatories = _group_marine_index_rows(page, service_key, name_keys)
-
-    if include_address and observatories:
-        enriched_values = enrich_observatory_addresses(
-            tuple(observatories.values()),
-            vworld_client=vworld_client,
-            vworld_api_key=vworld_api_key,
-            vworld_domain=vworld_domain,
-            vworld_env_file=vworld_env_file,
-            search_offsets_degrees=search_offsets_degrees,
-            require_road_address=False,
-        )
-        observatories = {
-            key: _merge_marine_index_address(original, enriched)
-            for (key, original), enriched in zip(
-                observatories.items(),
-                enriched_values,
-                strict=True,
-            )
-        }
-
-    return _finish_marine_index_place_page(page, service_key, name_keys, groups, observatories)
 
 
 async def _amarine_index_place_page(

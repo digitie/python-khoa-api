@@ -1,8 +1,8 @@
 # 테스트
 
 로컬 기본 검증은 실제 네트워크 호출 없이 실행합니다. HTTP 레이어는
-`httpx.AsyncClient` 기반이며, 동기 public API는 같은 async 구현을 감싸는
-facade로 검증합니다.
+`httpx.AsyncClient` 기반이며, public API는 async 전용이므로 테스트도
+`@pytest.mark.asyncio`로 async 구현을 직접 검증합니다.
 
 ```bash
 python -m compileall src/khoa tests

@@ -46,11 +46,12 @@ class AsyncFakeVworldClient:
         return self.payload
 
 
-def test_fetch_builds_request_and_normalizes_items(fake_client_factory):
+@pytest.mark.asyncio
+async def test_fetch_builds_request_and_normalizes_items(fake_client_factory):
     row = {"predcDt": "2024-11-01 00:00:00", "lat": "34.01", "lot": "123.2"}
     client, session = fake_client_factory(FakeResponse(khoa_payload(row)))
 
-    page = client.fetch(
+    page = await client.afetch(
         "roms",
         ymin=34.0,
         ymax=34.1,
@@ -120,7 +121,8 @@ async def test_aio_client_iterates_oceans_beach_info_pages() -> None:
     assert session.calls[0]["url"].endswith("/OceansBeachInfoService1/getOceansBeachInfo1")
 
 
-def test_constructor_strips_service_key_clipboard_whitespace(fake_client_factory):
+@pytest.mark.asyncio
+async def test_constructor_strips_service_key_clipboard_whitespace(fake_client_factory):
     client, session = fake_client_factory(FakeResponse(khoa_payload([])))
     client_with_space = KhoaClient(
         api_key=" \n TEST_\r\nKEY \t",
@@ -129,7 +131,7 @@ def test_constructor_strips_service_key_clipboard_whitespace(fake_client_factory
     )
 
     assert client_with_space.service_key == "TEST_KEY"
-    client_with_space.fetch("vortex")
+    await client_with_space.afetch("vortex")
     assert session.calls[0]["params"]["serviceKey"] == "TEST_KEY"
 
 
@@ -167,10 +169,11 @@ def test_service_key_loader_supports_source_specific_keys(tmp_path, monkeypatch)
     assert get_service_key("khoa.go.kr", env_file=env_file) == "DIRECT_KEY"
 
 
-def test_snake_case_aliases_and_dynamic_service_method(fake_client_factory):
+@pytest.mark.asyncio
+async def test_snake_case_aliases_and_dynamic_service_method(fake_client_factory):
     client, session = fake_client_factory(FakeResponse(khoa_payload([])))
 
-    page = client.dt_recent(obs_code="DT_0001", req_date=date(2026, 5, 7), min=10)
+    page = await client.dt_recent(obs_code="DT_0001", req_date=date(2026, 5, 7), min=10)
 
     params = session.calls[0]["params"]
     assert page.items == ()
@@ -180,14 +183,16 @@ def test_snake_case_aliases_and_dynamic_service_method(fake_client_factory):
     assert params["min"] == 10
 
 
-def test_required_param_validation(fake_client_factory):
+@pytest.mark.asyncio
+async def test_required_param_validation(fake_client_factory):
     client, _session = fake_client_factory(FakeResponse(khoa_payload([])))
 
     with pytest.raises(KhoaRequestError, match="obsCode"):
-        client.fetch("dt_recent")
+        await client.afetch("dt_recent")
 
 
-def test_roms_typed_helper(fake_client_factory):
+@pytest.mark.asyncio
+async def test_roms_typed_helper(fake_client_factory):
     row = {
         "predcDt": "2024-11-01 00:00:00",
         "lat": "39.19335",
@@ -198,7 +203,7 @@ def test_roms_typed_helper(fake_client_factory):
     }
     client, _session = fake_client_factory(FakeResponse(khoa_payload(row)))
 
-    page = client.roms(ymin=34.0, ymax=34.1, xmin=123.2, xmax=123.3)
+    page = await client.aroms(ymin=34.0, ymax=34.1, xmin=123.2, xmax=123.3)
 
     item = page.items[0]
     assert isinstance(item, RomsPrediction)
@@ -209,7 +214,8 @@ def test_roms_typed_helper(fake_client_factory):
     assert item.water_temperature_c == 15.45
 
 
-def test_beach_index_accepts_top_level_header_body_payload(fake_client_factory):
+@pytest.mark.asyncio
+async def test_beach_index_accepts_top_level_header_body_payload(fake_client_factory):
     row = {
         "bbchNm": "대천해수욕장",
         "lat": 36.31,
@@ -219,7 +225,7 @@ def test_beach_index_accepts_top_level_header_body_payload(fake_client_factory):
     }
     client, session = fake_client_factory(FakeResponse(_top_level_khoa_payload(row)))
 
-    page = client.beach_index(num_of_rows=1)
+    page = await client.abeach_index(num_of_rows=1)
 
     assert session.calls[0]["url"].endswith("/fcstBeachv2/GetFcstBeachApiServicev2")
     place = page.items[0]
@@ -229,7 +235,8 @@ def test_beach_index_accepts_top_level_header_body_payload(fake_client_factory):
     assert page.total_count == 1
 
 
-def test_beach_index_can_include_vworld_address(fake_client_factory):
+@pytest.mark.asyncio
+async def test_beach_index_can_include_vworld_address(fake_client_factory):
     row = {
         "bbchNm": "해운대해수욕장",
         "lat": 35.158,
@@ -240,7 +247,7 @@ def test_beach_index_can_include_vworld_address(fake_client_factory):
     client, _session = fake_client_factory(FakeResponse(_top_level_khoa_payload([row, row])))
     vworld = FakeVworldClient(_vworld_address_payload())
 
-    page = client.beach_index(include_address=True, vworld_client=vworld, num_of_rows=2)
+    page = await client.abeach_index(include_address=True, vworld_client=vworld, num_of_rows=2)
 
     first = page.items[0]
     assert len(page.items) == 1
@@ -282,7 +289,8 @@ async def test_abeach_index_awaits_async_vworld_client(fake_client_factory):
     assert len(vworld.calls) == 1
 
 
-def test_beach_search_calls_direct_endpoint_and_returns_dto(fake_client_factory):
+@pytest.mark.asyncio
+async def test_beach_search_calls_direct_endpoint_and_returns_dto(fake_client_factory):
     payload = {
         "result": {
             "meta": {
@@ -303,7 +311,7 @@ def test_beach_search_calls_direct_endpoint_and_returns_dto(fake_client_factory)
     }
     client, session = fake_client_factory(FakeResponse(payload))
 
-    result = client.beach_search("BCH001", service_key=" \nDIRECT_KEY\t")
+    result = await client.abeach_search("BCH001", service_key=" \nDIRECT_KEY\t")
 
     call = session.calls[0]
     assert call["url"].endswith("/beach/search.do")
@@ -320,20 +328,22 @@ def test_beach_search_calls_direct_endpoint_and_returns_dto(fake_client_factory)
     assert observation.observed_at is not None
 
 
-def test_beach_search_prefers_khoa_direct_key_from_env_file(tmp_path, fake_client_factory):
+@pytest.mark.asyncio
+async def test_beach_search_prefers_khoa_direct_key_from_env_file(tmp_path, fake_client_factory):
     env_file = tmp_path / ".env"
     env_file.write_text("KHOA_DIRECT_SERVICE_KEY=DIRECT_KEY\n", encoding="utf-8")
     client, session = fake_client_factory(
         FakeResponse({"result": {"meta": {"beach_code": "BCH001"}, "data": []}})
     )
 
-    result = client.beach_search("BCH001", env_file=env_file)
+    result = await client.abeach_search("BCH001", env_file=env_file)
 
     assert result.id == "BCH001"
     assert session.calls[0]["params"]["ServiceKey"] == "DIRECT_KEY"
 
 
-def test_oceans_beach_info_calls_public_data_endpoint_and_returns_dto(fake_client_factory):
+@pytest.mark.asyncio
+async def test_oceans_beach_info_calls_public_data_endpoint_and_returns_dto(fake_client_factory):
     row = {
         "num": "1",
         "sidoNm": "제주",
@@ -351,7 +361,7 @@ def test_oceans_beach_info_calls_public_data_endpoint_and_returns_dto(fake_clien
     }
     client, session = fake_client_factory(FakeResponse(_top_level_khoa_payload(row)))
 
-    page = client.oceans_beach_info("제주", num_of_rows=1)
+    page = await client.aoceans_beach_info("제주", num_of_rows=1)
 
     call = session.calls[0]
     assert call["url"].endswith("/OceansBeachInfoService1/getOceansBeachInfo1")
@@ -368,7 +378,8 @@ def test_oceans_beach_info_calls_public_data_endpoint_and_returns_dto(fake_clien
     assert "ServiceKey" not in page.context.request_params
 
 
-def test_oceans_beach_info_accepts_wrapped_live_payload(fake_client_factory):
+@pytest.mark.asyncio
+async def test_oceans_beach_info_accepts_wrapped_live_payload(fake_client_factory):
     row = {
         "sidoNm": "충남",
         "gugunNm": "보령시",
@@ -387,13 +398,14 @@ def test_oceans_beach_info_accepts_wrapped_live_payload(fake_client_factory):
     }
     client, _session = fake_client_factory(FakeResponse(payload))
 
-    page = client.oceans_beach_info("충남", num_of_rows=1)
+    page = await client.aoceans_beach_info("충남", num_of_rows=1)
 
     assert page.items[0].name == "대천"
     assert page.total_count == 1
 
 
-def test_oceans_beach_info_parses_snake_case_live_rows(fake_client_factory):
+@pytest.mark.asyncio
+async def test_oceans_beach_info_parses_snake_case_live_rows(fake_client_factory):
     # 2026-06-11 live 실측 shape (#5): row 키가 전부 snake_case.
     row = {
         "num": 1,
@@ -422,7 +434,7 @@ def test_oceans_beach_info_parses_snake_case_live_rows(fake_client_factory):
     }
     client, _session = fake_client_factory(FakeResponse(payload))
 
-    page = client.oceans_beach_info("부산", num_of_rows=1)
+    page = await client.aoceans_beach_info("부산", num_of_rows=1)
 
     item = page.items[0]
     assert item.sido_name == "부산"
@@ -439,7 +451,8 @@ def test_oceans_beach_info_parses_snake_case_live_rows(fake_client_factory):
     assert item.lon == pytest.approx(129.233693)
 
 
-def test_iter_oceans_beach_info_pages_scans_sido_pages(fake_client_factory):
+@pytest.mark.asyncio
+async def test_iter_oceans_beach_info_pages_scans_sido_pages(fake_client_factory):
     client, session = fake_client_factory(
         FakeResponse(
             _top_level_khoa_payload(
@@ -460,12 +473,13 @@ def test_iter_oceans_beach_info_pages_scans_sido_pages(fake_client_factory):
         FakeResponse(_top_level_khoa_payload(None, result_code="03", total_count=0)),
     )
 
-    pages = list(
-        client.iter_oceans_beach_info_pages(
+    pages = [
+        page
+        async for page in client.aiter_oceans_beach_info_pages(
             sido_names=("제주", "부산"),
             num_of_rows=1,
         )
-    )
+    ]
 
     assert [page.items[0].name for page in pages] == ["A", "B"]
     assert [call["params"]["pageNo"] for call in session.calls] == [1, 2, 1]
@@ -487,7 +501,8 @@ def test_api_catalog_contains_human_readable_dataset_names():
     assert roms["required_params"] == ["ymin", "ymax", "xmin", "xmax"]
 
 
-def test_surfing_index_groups_places_and_enriches_address_once(fake_client_factory):
+@pytest.mark.asyncio
+async def test_surfing_index_groups_places_and_enriches_address_once(fake_client_factory):
     rows = [
         {
             "surfPlcNm": "Surf A",
@@ -519,7 +534,7 @@ def test_surfing_index_groups_places_and_enriches_address_once(fake_client_facto
     client, session = fake_client_factory(FakeResponse(khoa_payload(rows)))
     vworld = FakeVworldClient(_vworld_address_payload())
 
-    page = client.surfing_index(include_address=True, vworld_client=vworld, num_of_rows=3)
+    page = await client.asurfing_index(include_address=True, vworld_client=vworld, num_of_rows=3)
 
     assert session.calls[0]["url"].endswith("/fcstSurfingv2/GetFcstSurfingApiServicev2")
     assert len(page.items) == 2
@@ -558,7 +573,8 @@ async def test_asurfing_index_awaits_async_vworld_client(fake_client_factory):
     assert len(vworld.calls) == 1
 
 
-def test_iter_pages_stops_after_total_count(fake_client_factory):
+@pytest.mark.asyncio
+async def test_iter_pages_stops_after_total_count(fake_client_factory):
     client, session = fake_client_factory(
         FakeResponse(
             khoa_payload([{"a": "1"}, {"a": "2"}], page_no=1, num_of_rows=2, total_count=3)
@@ -566,8 +582,9 @@ def test_iter_pages_stops_after_total_count(fake_client_factory):
         FakeResponse(khoa_payload({"a": "3"}, page_no=2, num_of_rows=2, total_count=3)),
     )
 
-    pages = list(
-        client.iter_pages(
+    pages = [
+        page
+        async for page in client.aiter_pages(
             "roms",
             ymin=34.0,
             ymax=34.1,
@@ -575,17 +592,18 @@ def test_iter_pages_stops_after_total_count(fake_client_factory):
             xmax=123.3,
             num_of_rows=2,
         )
-    )
+    ]
 
     assert [page.page_no for page in pages] == [1, 2]
     assert [call["params"]["pageNo"] for call in session.calls] == [1, 2]
 
 
-def test_first_raises_no_data(fake_client_factory):
+@pytest.mark.asyncio
+async def test_first_raises_no_data(fake_client_factory):
     client, _session = fake_client_factory(FakeResponse(khoa_payload(None, result_code="03")))
 
     with pytest.raises(KhoaNoDataError):
-        client.first(
+        await client.afirst(
             "roms",
             ymin=34.0,
             ymax=34.1,

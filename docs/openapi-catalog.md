@@ -176,5 +176,5 @@ KHOA 포털 상세 페이지는 관측소 목록을 아래 AJAX 엔드포인트�
 
 번들 목록은 `khoa.BEACH_OBSERVATORIES` 또는
 `khoa.get_beach_observatories()`로 사용합니다. 포털 엔드포인트에서 새로
-가져오려면 `khoa.fetch_observatory_list("36")`을 호출하고, live 결과에도
-주소를 붙이려면 `include_address=True`와 `vworld` 클라이언트를 전달합니다.
+가져오려면 `await khoa.afetch_observatory_list("36")`을 호출하고, live 결과에도
+주소를 붙이려면 `include_address=True`와 `AsyncVworldClient` 인스턴스를 전달합니다.

@@ -22,7 +22,7 @@ from typing import Any, Final, Protocol, cast
 
 import httpx
 
-from ._http import DEFAULT_USER_AGENT, TRANSIENT_STATUSES, run_async
+from ._http import DEFAULT_USER_AGENT, TRANSIENT_STATUSES
 from .exceptions import KhoaParseError, KhoaRequestError, KhoaServerError
 from .models import Observatory
 
@@ -485,23 +485,6 @@ def get_builtin_observatory_list(api_id: str = BEACH_OPENAPI_ID) -> tuple[Observ
     return BEACH_OBSERVATORIES
 
 
-def fetch_openapi_info(
-    api_id: str | int,
-    *,
-    session: PortalSessionLike | None = None,
-    timeout: float = 10.0,
-    url: str = KHOA_OPENAPI_INFO_URL,
-    retries: int = 3,
-) -> dict[str, Any]:
-    """비표준 AJAX 엔드포인트에서 KHOA 포털 OpenAPI 상세 JSON을 가져옵니다."""
-
-    return run_async(
-        lambda: afetch_openapi_info(
-            api_id, session=session, timeout=timeout, url=url, retries=retries
-        )
-    )
-
-
 async def afetch_openapi_info(
     api_id: str | int,
     *,
@@ -562,33 +545,6 @@ async def _portal_post(
         return cast(PortalResponseLike, response)
 
 
-def fetch_observatory_list(
-    api_id: str | int = BEACH_OPENAPI_ID,
-    *,
-    session: PortalSessionLike | None = None,
-    timeout: float = 10.0,
-    include_address: bool = False,
-    vworld_client: VworldReverseGeocoderLike | None = None,
-    vworld_api_key: str | None = None,
-    vworld_domain: str | None = None,
-    vworld_env_file: str | PathLike[str] | None = None,
-) -> tuple[Observatory, ...]:
-    """KHOA 비표준 OpenAPI 상세 엔드포인트에서 관측소 목록을 가져옵니다."""
-
-    return run_async(
-        lambda: afetch_observatory_list(
-            api_id,
-            session=session,
-            timeout=timeout,
-            include_address=include_address,
-            vworld_client=vworld_client,
-            vworld_api_key=vworld_api_key,
-            vworld_domain=vworld_domain,
-            vworld_env_file=vworld_env_file,
-        )
-    )
-
-
 async def afetch_observatory_list(
     api_id: str | int = BEACH_OPENAPI_ID,
     *,
@@ -623,30 +579,6 @@ async def afetch_observatory_list(
     )
 
 
-def fetch_beach_observatories(
-    *,
-    session: PortalSessionLike | None = None,
-    timeout: float = 10.0,
-    include_address: bool = False,
-    vworld_client: VworldReverseGeocoderLike | None = None,
-    vworld_api_key: str | None = None,
-    vworld_domain: str | None = None,
-    vworld_env_file: str | PathLike[str] | None = None,
-) -> tuple[Observatory, ...]:
-    """KHOA OpenAPI 상세 id 36의 live 해수욕장 관측소 목록을 가져옵니다."""
-
-    return fetch_observatory_list(
-        BEACH_OPENAPI_ID,
-        session=session,
-        timeout=timeout,
-        include_address=include_address,
-        vworld_client=vworld_client,
-        vworld_api_key=vworld_api_key,
-        vworld_domain=vworld_domain,
-        vworld_env_file=vworld_env_file,
-    )
-
-
 async def afetch_beach_observatories(
     *,
     session: PortalSessionLike | None = None,
@@ -668,33 +600,6 @@ async def afetch_beach_observatories(
         vworld_api_key=vworld_api_key,
         vworld_domain=vworld_domain,
         vworld_env_file=vworld_env_file,
-    )
-
-
-def enrich_observatory_addresses(
-    observatories: tuple[Observatory, ...],
-    *,
-    vworld_client: VworldReverseGeocoderLike | None = None,
-    vworld_api_key: str | None = None,
-    vworld_domain: str | None = None,
-    vworld_env_file: str | PathLike[str] | None = None,
-    timeout: float = 10.0,
-    search_offsets_degrees: tuple[float, ...] = DEFAULT_ADDRESS_SEARCH_OFFSETS_DEGREES,
-    require_road_address: bool = True,
-) -> tuple[Observatory, ...]:
-    """VWorld 역지오코딩 결과를 관측소 목록에 붙입니다."""
-
-    return run_async(
-        lambda: aenrich_observatory_addresses(
-            observatories,
-            vworld_client=vworld_client,
-            vworld_api_key=vworld_api_key,
-            vworld_domain=vworld_domain,
-            vworld_env_file=vworld_env_file,
-            timeout=timeout,
-            search_offsets_degrees=search_offsets_degrees,
-            require_road_address=require_road_address,
-        )
     )
 
 

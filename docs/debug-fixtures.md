@@ -3,8 +3,8 @@
 `python-khoa-api`는 Streamlit 같은 Web UI 프레임워크에 직접 의존하지 않습니다.
 대신 별도 디버그 UI 패키지에서 가져다 쓸 수 있는 공통 구성요소만 제공합니다.
 
-- `KhoaClient.debug_fetch()`: API 입력, 요청, 응답, 파싱 결과, 가공 결과, trace를
-  `DebugRun`으로 반환합니다.
+- `KhoaClient.adebug_fetch()`: API 입력, 요청, 응답, 파싱 결과, 가공 결과, trace를
+  `DebugRun`으로 비동기 반환합니다.
 - `jsonable()`: Pydantic v2 모델을 `model_dump(mode="json")` 기준으로 JSON 저장
   가능한 값으로 변환합니다.
 - `redact_sensitive()`: `serviceKey`, `api_key`, `Authorization`, token 값을
@@ -17,25 +17,31 @@
 ## DebugRun
 
 ```python
+import asyncio
+
 from khoa import KhoaClient
 
-client = KhoaClient(api_key="...")
-run = client.debug_fetch(
-    "roms",
-    ymin=34.0,
-    ymax=34.1,
-    xmin=123.2,
-    xmax=123.3,
-)
 
-print(run.input)
-print(run.request)
-print(run.response)
-print(run.parsed)
-print(run.processed)
-print(run.trace)
-print(run.error)
-print(run.catalog)
+async def main() -> None:
+    async with KhoaClient(api_key="...") as client:
+        run = await client.adebug_fetch(
+            "roms",
+            ymin=34.0,
+            ymax=34.1,
+            xmin=123.2,
+            xmax=123.3,
+        )
+
+    print(run.input)
+    print(run.request)
+    print(run.response)
+    print(run.parsed)
+    print(run.processed)
+    print(run.trace)
+    print(run.error)
+    print(run.catalog)
+
+asyncio.run(main())
 ```
 
 성공 시 `parsed`에는 `Page[RawRecord]`, `processed`에는 정규화된 item tuple이

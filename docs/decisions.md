@@ -210,3 +210,53 @@ async fake portal session/VWorld client를 이용한 회귀 테스트를 추가�
 객체를"이라는 경고로 문서화했다. 런타임 가드는 추가하지 않았다 — `_http.py`의
 `SessionLike`도 동일한 계약을 가정할 뿐 강제하지 않으며, 이 프로젝트의 다른 어떤
 경계에서도 이런 오용까지 감지하지는 않는다.
+
+---
+
+## D-007: `khoa`를 asyncio 전용 라이브러리로 전환한다 (동기 API 전면 제거)
+
+- 상태: accepted
+- 날짜: 2026-09-11
+
+### 컨텍스트
+
+D-006에서 `observatories.py`의 포털/VWorld 호출 경로를 async로 전환하면서,
+`KhoaClient`는 여전히 sync 메서드(`fetch()`, `beach_index()` 등)와 `a` 접두
+async 메서드(`afetch()`, `abeach_index()` 등)를 함께 제공하는 이중 API였다.
+sync 메서드는 대부분 `_http.py`의 `run_async()`로 async 구현을 감싸는
+얇은 facade였을 뿐이라, 두 가지 이름 체계를 유지하는 비용(문서 두 벌, 테스트
+두 벌, `_marine_index`/`_marine_index_place_page`처럼 sync 전용 헬퍼가 로직을
+중복하는 코드)이 실제 사용처(비동기 우선 downstream)에 비해 크다고 판단했다.
+
+### 결정
+
+`KhoaClient`의 모든 sync 메서드와 `_marine_index()` 같은 sync 전용 내부
+헬퍼, `observatories.py`의 `fetch_openapi_info()`/`fetch_observatory_list()`/
+`fetch_beach_observatories()`/`enrich_observatory_addresses()`, `_http.py`의
+`run_async()`/`KhoaHttp.get()`/`get_url()`/`close()`, `pagination.py`의
+`paginate()`/`paginate_many()`를 모두 제거한다. `a` 접두 async 메서드/함수만
+남기고, `KhoaClient`의 `__enter__`/`__exit__`(sync 컨텍스트 매니저)는
+`__aenter__`/`__aexit__`로 교체한다. 접두사 없는 이름이 필요한 소비자를 위한
+`KhoaClient.aio()`/`AsyncKhoaClient`(이미 async 전용 wrapper)는 그대로 둔다.
+
+### 근거
+
+이 라이브러리의 실제 HTTP 계층(`_http.py`, `observatories.py`)은 이미
+`httpx.AsyncClient`/`AsyncVworldClient` 기반으로 완전히 비동기이므로, sync
+facade는 실질적인 이점 없이 유지보수 비용만 더했다. 하나의 API 표면만
+유지하면 `_marine_index_place_page`처럼 sync/async 양쪽에 동일 로직을
+중복 구현할 필요가 없어지고, D-006에서 우려했던 "sync facade의
+`run_async()`가 새 스레드/새 이벤트 루프를 만들어 async 리소스(`AsyncVworldClient`
+등)와 크로스 루프 오류를 일으키는" 위험도 sync facade 자체가 사라지면서
+함께 사라진다. 다만 async 전용 함수에 동기 클라이언트/세션을 넘기면 그
+블로킹 호출이 코루틴 안에서 실행되어 이벤트 루프를 막는 문제는 여전히
+남아 있으므로 `README.md`에 계속 경고로 문서화한다.
+
+### 결과
+
+`src/khoa/client.py`, `src/khoa/observatories.py`, `src/khoa/_http.py`,
+`src/khoa/pagination.py`, `src/khoa/__init__.py`에서 sync 전용 코드를
+제거했다. `README.md`, `docs/debug-fixtures.md`, `docs/openapi-catalog.md`,
+`docs/testing.md`, `AGENTS.md`의 사용 예시를 전부 async로 갱신했다.
+`tests/` 전체의 sync 호출을 `@pytest.mark.asyncio` + `a` 접두 메서드
+호출로 다시 작성했다. `CHANGELOG.md`에 breaking change로 기록했다.

@@ -20,11 +20,12 @@ def live_client() -> KhoaClient:
     return KhoaClient(key)
 
 
-def test_live_vortex_smoke():
+@pytest.mark.asyncio
+async def test_live_vortex_smoke():
     client = live_client()
 
     try:
-        page = client.fetch("vortex", num_of_rows=1)
+        page = await client.afetch("vortex", num_of_rows=1)
     except (KhoaAuthError, KhoaRateLimitError) as exc:
         pytest.fail(f"live KHOA key was rejected: {exc}")
 
@@ -34,11 +35,12 @@ def test_live_vortex_smoke():
     assert page.total_count >= 0
 
 
-def test_live_roms_smoke():
+@pytest.mark.asyncio
+async def test_live_roms_smoke():
     client = live_client()
 
     try:
-        page = client.roms(ymin=34.0, ymax=34.1, xmin=123.2, xmax=123.3, num_of_rows=1)
+        page = await client.aroms(ymin=34.0, ymax=34.1, xmin=123.2, xmax=123.3, num_of_rows=1)
     except (KhoaAuthError, KhoaRateLimitError) as exc:
         pytest.fail(f"live KHOA key was rejected: {exc}")
 

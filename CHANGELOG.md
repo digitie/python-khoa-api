@@ -12,6 +12,25 @@
   주소 보강을 `httpx.AsyncClient`/`AsyncVworldClient` 기반으로 완전히 비동기 실행할 수
   있습니다.
 
+### Removed (Breaking)
+
+- `khoa`를 asyncio 전용 라이브러리로 전환했습니다. `KhoaClient`의 모든 sync
+  메서드(`fetch()`, `items()`, `debug_fetch()`, `iter_pages()`, `roms()`,
+  `beach_index()`, `beach_search()`, `oceans_beach_info()`,
+  `iter_oceans_beach_info_pages()`, `sea_split_index()`/`fishing_index()`/
+  `seasickness_index()`/`skin_scuba_index()`/`mudflat_index()`/`surfing_index()`/
+  `sea_trip_index()`, `first()`, `close()`, `__enter__`/`__exit__`)를 제거했습니다.
+  `observatories.py`의 `fetch_openapi_info()`, `fetch_observatory_list()`,
+  `fetch_beach_observatories()`, `enrich_observatory_addresses()`와
+  `_http.py`의 `run_async()`, `KhoaHttp.get()`/`get_url()`/`close()`,
+  `pagination.py`의 `paginate()`/`paginate_many()`도 함께 제거했습니다.
+  각 기능의 `a` 접두 비동기 버전(`afetch()`, `abeach_index()`,
+  `afetch_observatory_list()` 등)은 그대로 남아 있으며, 이제 이것이 유일한
+  진입점입니다. `KhoaClient`는 `async with`로 여닫습니다
+  (`__aenter__`/`__aexit__`가 `__enter__`/`__exit__`를 대체).
+  접두사 없는 이름이 필요하면 기존처럼 `KhoaClient.aio()`(`AsyncKhoaClient`)를
+  사용합니다.
+
 ### Fixed
 
 - `abeach_index()`, `asurfing_index()` 등 `a` 접두 typed helper에서 `include_address=True`와
