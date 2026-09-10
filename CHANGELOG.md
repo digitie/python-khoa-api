@@ -18,6 +18,9 @@
   live VWorld 옵션을 함께 쓰면 동기 주소 보강 호출이 코루틴 안에서 그대로 실행되어
   호출자의 이벤트 루프를 막던 문제를 수정했습니다. 이제 `AsyncVworldClient`처럼 실제
   async 클라이언트를 `vworld_client`로 넘겨도 정상 동작합니다.
+- `vworld_client`를 넘기지 않고 `python-vworld-api`가 `AsyncVworldClient`를 제공하지
+  않는 구버전일 때, 불명확한 `AttributeError` 대신 안내 메시지가 있는
+  `KhoaRequestError`를 던지도록 수정했습니다.
 
 ### Changed
 

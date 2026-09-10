@@ -1423,31 +1423,6 @@ def _finish_beach_index_place_page(
     )
 
 
-def _beach_index_place_page(
-    page: Page[RawRecord],
-    *,
-    include_address: bool,
-    vworld_client: VworldReverseGeocoderLike | None,
-    vworld_api_key: str | None,
-    vworld_domain: str | None,
-    vworld_env_file: str | PathLike[str] | None,
-    search_offsets_degrees: tuple[float, ...],
-) -> Page[BeachIndexPlace]:
-    groups, observatories = _group_beach_index_rows(page)
-
-    if include_address and observatories:
-        observatories = _beach_index_address_observatories(
-            observatories,
-            vworld_client=vworld_client,
-            vworld_api_key=vworld_api_key,
-            vworld_domain=vworld_domain,
-            vworld_env_file=vworld_env_file,
-            search_offsets_degrees=search_offsets_degrees,
-        )
-
-    return _finish_beach_index_place_page(page, groups, observatories)
-
-
 async def _abeach_index_place_page(
     page: Page[RawRecord],
     *,
@@ -1501,48 +1476,6 @@ def _beach_index_place_key(observatory: Observatory) -> tuple[str, str, float, f
         round(observatory.lat, 6),
         round(observatory.lon, 6),
     )
-
-
-def _beach_index_address_observatories(
-    observatories: dict[tuple[str, str, float, float], Observatory],
-    *,
-    vworld_client: VworldReverseGeocoderLike | None,
-    vworld_api_key: str | None,
-    vworld_domain: str | None,
-    vworld_env_file: str | PathLike[str] | None,
-    search_offsets_degrees: tuple[float, ...],
-) -> dict[tuple[str, str, float, float], Observatory]:
-    if not _has_live_vworld_options(
-        vworld_client=vworld_client,
-        vworld_api_key=vworld_api_key,
-        vworld_domain=vworld_domain,
-        vworld_env_file=vworld_env_file,
-    ):
-        return {
-            key: _cached_beach_index_address_observatory(observatory)
-            for key, observatory in observatories.items()
-        }
-
-    lookup_observatories = tuple(
-        _beach_index_lookup_observatory(observatory)
-        for observatory in observatories.values()
-    )
-    enriched_values = enrich_observatory_addresses(
-        lookup_observatories,
-        vworld_client=vworld_client,
-        vworld_api_key=vworld_api_key,
-        vworld_domain=vworld_domain,
-        vworld_env_file=vworld_env_file,
-        search_offsets_degrees=search_offsets_degrees,
-    )
-    return {
-        key: _merge_beach_index_address(original, enriched)
-        for (key, original), enriched in zip(
-            observatories.items(),
-            enriched_values,
-            strict=True,
-        )
-    }
 
 
 async def _abeach_index_address_observatories(

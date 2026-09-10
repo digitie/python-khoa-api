@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -14,11 +15,13 @@ from khoa import (
     KHOA_OPENAPI_INFO_URL,
     aenrich_observatory_addresses,
     afetch_observatory_list,
+    afetch_openapi_info,
     enrich_observatory_addresses,
     fetch_observatory_list,
     get_beach_observatories,
     get_builtin_observatory_list,
 )
+from khoa import observatories as observatories_module
 
 
 class FakePortalResponse:
@@ -296,6 +299,79 @@ async def test_aenrich_observatory_addresses_awaits_async_vworld_client():
 
     assert observatories[0].legal_dong_code == "2635010500"
     assert len(vworld.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_afetch_openapi_info_retries_transient_status(monkeypatch):
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr(observatories_module.asyncio, "sleep", fake_sleep)
+
+    responses = [
+        FakePortalResponse({"observatoryList": []}, status_code=503),
+        FakePortalResponse({"observatoryList": [{"id": "BCH001"}]}, status_code=200),
+    ]
+
+    class RetryPortalSession:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def post(
+            self,
+            url: str,
+            *,
+            data: Mapping[str, Any],
+            headers: Mapping[str, str],
+            timeout: float,
+        ) -> FakePortalResponse:
+            response = responses[self.calls]
+            self.calls += 1
+            return response
+
+    session = RetryPortalSession()
+
+    payload = await afetch_openapi_info(BEACH_OPENAPI_ID, session=session, retries=2)
+
+    assert session.calls == 2
+    assert payload == {"observatoryList": [{"id": "BCH001"}]}
+    assert len(sleep_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_aenrich_observatory_addresses_closes_owned_async_client(monkeypatch):
+    created: list[Any] = []
+
+    class OwnedAsyncVworldClient:
+        def __init__(self, **kwargs: Any) -> None:
+            self.kwargs = kwargs
+            self.aclose_called = False
+            created.append(self)
+
+        async def reverse_geocode_latlon(
+            self, lat: float, lon: float, **kwargs: Any
+        ) -> Mapping[str, Any]:
+            return _vworld_address_payload()
+
+        async def aclose(self) -> None:
+            self.aclose_called = True
+
+    monkeypatch.setattr(
+        observatories_module.importlib,
+        "import_module",
+        lambda name: SimpleNamespace(AsyncVworldClient=OwnedAsyncVworldClient),
+    )
+
+    observatories = await aenrich_observatory_addresses(
+        BEACH_OBSERVATORIES[:1],
+        vworld_api_key="test-key",
+    )
+
+    assert observatories[0].legal_dong_code == "2635010500"
+    assert len(created) == 1
+    assert created[0].aclose_called is True
 
 
 def _vworld_address_payload() -> Mapping[str, Any]:

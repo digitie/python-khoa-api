@@ -22,7 +22,7 @@ from typing import Any, Final, Protocol, cast
 
 import httpx
 
-from ._http import TRANSIENT_STATUSES, run_async
+from ._http import DEFAULT_USER_AGENT, TRANSIENT_STATUSES, run_async
 from .exceptions import KhoaParseError, KhoaRequestError, KhoaServerError
 from .models import Observatory
 
@@ -554,7 +554,10 @@ async def _portal_post(
         if inspect.isawaitable(result):
             return await result
         return result
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    async with httpx.AsyncClient(
+        headers={"User-Agent": DEFAULT_USER_AGENT},
+        follow_redirects=True,
+    ) as client:
         response = await client.post(url, data=data, headers=headers, timeout=timeout)
         return cast(PortalResponseLike, response)
 
@@ -729,9 +732,7 @@ async def aenrich_observatory_addresses(
         return tuple(results)
     finally:
         if owns_client:
-            aclose = getattr(client, "aclose", None)
-            if aclose is not None:
-                await aclose()
+            await _aclose_vworld_client(client)
 
 
 def _resolve_vworld_client(
@@ -754,7 +755,14 @@ def _resolve_vworld_client(
             retryable=False,
         ) from exc
 
-    client_class = cast(Any, module).AsyncVworldClient
+    client_class = getattr(module, "AsyncVworldClient", None)
+    if client_class is None:
+        raise KhoaRequestError(
+            "주소 보강에는 AsyncVworldClient를 제공하는 python-vworld-api 버전이 필요합니다.",
+            endpoint="https://api.vworld.kr/req/address",
+            failure_kind="request",
+            retryable=False,
+        )
     kwargs: dict[str, Any] = {"timeout": timeout}
     if vworld_api_key is not None:
         kwargs["api_key"] = vworld_api_key
@@ -766,6 +774,18 @@ def _resolve_vworld_client(
             client_class.from_env_file(vworld_env_file, **kwargs),
         )
     return cast(VworldReverseGeocoderLike, client_class(**kwargs))
+
+
+async def _aclose_vworld_client(client: VworldReverseGeocoderLike) -> None:
+    aclose = getattr(client, "aclose", None)
+    if aclose is not None:
+        result = aclose()
+        if inspect.isawaitable(result):
+            await result
+        return
+    close = getattr(client, "close", None)
+    if close is not None:
+        await asyncio.to_thread(close)
 
 
 async def _alookup_vworld_address_fields(

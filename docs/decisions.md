@@ -197,3 +197,16 @@ async 경로를 만들 수 있다. `python-vworld-api`가 이미 `AsyncVworldCli
 `src/khoa/__init__.py`가 새 async 함수들을 내보내고, `README.md`에 async 사용
 예시를 추가했다. `tests/test_observatories.py`, `tests/test_client.py`에
 async fake portal session/VWorld client를 이용한 회귀 테스트를 추가했다.
+
+### 알려진 제약
+
+`_http.py`의 `run_async()`는 이미 실행 중인 이벤트 루프가 있으면 새 스레드에서
+별도 `asyncio.run()`을 돌린다. 그 안에서 호출자가 이미 만들어 둔 `AsyncVworldClient`
+(또는 다른 async 리소스)를 sync facade에 넘기면, 그 리소스가 원래 바인딩된 루프와
+다른 루프에서 쓰이게 되어 "Future attached to a different loop"류의 오류가 날 수
+있다. 반대로 동기 세션/클라이언트를 async facade(`afetch_*`, `a*_index`)에 넘기면
+그 블로킹 호출이 코루틴 안에서 그대로 실행되어 호출자의 이벤트 루프를 막는다. 두
+경우 모두 `README.md`에 "동기 facade에는 동기 객체를, async facade에는 async
+객체를"이라는 경고로 문서화했다. 런타임 가드는 추가하지 않았다 — `_http.py`의
+`SessionLike`도 동일한 계약을 가정할 뿐 강제하지 않으며, 이 프로젝트의 다른 어떤
+경계에서도 이런 오용까지 감지하지는 않는다.

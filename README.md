@@ -303,6 +303,13 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+동기 facade(`fetch_observatory_list()`, `KhoaClient.beach_index()` 등)에는 동기
+`VworldClient`/`requests.Session` 계열만, async facade(`afetch_observatory_list()`,
+`AsyncKhoaClient`, `KhoaClient.abeach_index()` 등)에는 async `AsyncVworldClient` 계열만
+넘기세요. 방향을 섞으면(예: 이미 실행 중인 이벤트 루프 안에서 sync facade에
+`AsyncVworldClient`를 넘기거나, async facade에 동기 클라이언트를 넘기는 경우) 각각
+"다른 루프에 연결된 Future" 오류나 이벤트 루프 블로킹이 발생할 수 있습니다.
+
 ## 카탈로그
 
 ```python
