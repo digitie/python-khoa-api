@@ -318,7 +318,9 @@ asyncio.run(main())
 
 `vworld_client=`에는 반드시 async `AsyncVworldClient` 계열만 넘기세요. 동기
 `VworldClient`를 넘기면 그 블로킹 호출이 코루틴 안에서 그대로 실행되어
-이벤트 루프를 막습니다.
+이벤트 루프를 막습니다. 같은 이유로 `KhoaClient(session=...)`에 동기
+`requests.Session` 계열을 직접 주입하는 것도 피하세요(테스트용 fake 객체는
+예외 — 실제 네트워크 호출을 하지 않으므로 블로킹이 없습니다).
 
 ## 카탈로그
 

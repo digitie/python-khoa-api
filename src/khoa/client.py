@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from datetime import UTC, date, datetime
 from os import PathLike
 from types import TracebackType
-from typing import Any, TypeVar
+from typing import Any
 
 from ._convert import (
     csv_or_none,
@@ -96,8 +96,6 @@ _MARINE_INDEX_NAME_KEYS: dict[str, tuple[str, ...]] = {
     "surfing_index": ("surfPlcNm",),
     "sea_trip_index": ("sareaDtlNm",),
 }
-
-T = TypeVar("T")
 
 _PARAM_ALIASES: dict[str, str] = {
     "area_code": "areaCode",
@@ -785,7 +783,7 @@ class AsyncKhoaClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    def __getattr__(self, name: str) -> Callable[..., Any]:
+    def __getattr__(self, name: str) -> Callable[..., Awaitable[Page[RawRecord]]]:
         try:
             service = get_service(name)
         except KeyError as exc:

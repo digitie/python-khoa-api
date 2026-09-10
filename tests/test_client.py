@@ -75,6 +75,19 @@ async def test_fetch_builds_request_and_normalizes_items(fake_client_factory):
 
 
 @pytest.mark.asyncio
+async def test_khoa_client_async_context_manager_closes_http_session(fake_client_factory):
+    client, session = fake_client_factory(FakeResponse(khoa_payload({"foo": "bar"})))
+
+    async with client as ctx_client:
+        assert ctx_client is client
+        page = await ctx_client.afetch("vortex", num_of_rows=1)
+
+    assert page.items == ({"foo": "bar"},)
+    assert client.closed
+    assert session.calls[0]["params"]["serviceKey"] == "TEST_KEY"
+
+
+@pytest.mark.asyncio
 async def test_aio_client_fetch_uses_krheritage_style_api() -> None:
     session = FakeSession(
         [

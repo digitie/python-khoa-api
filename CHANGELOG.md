@@ -7,6 +7,7 @@
 
 ### Added
 
+- `LICENSE`(GPL-3.0-or-later 전문)를 추가했습니다.
 - `afetch_openapi_info()`, `afetch_observatory_list()`, `afetch_beach_observatories()`,
   `aenrich_observatory_addresses()`를 추가했습니다. KHOA 포털 관측소 목록 조회와 VWorld
   주소 보강을 `httpx.AsyncClient`/`AsyncVworldClient` 기반으로 완전히 비동기 실행할 수
@@ -31,6 +32,22 @@
   접두사 없는 이름이 필요하면 기존처럼 `KhoaClient.aio()`(`AsyncKhoaClient`)를
   사용합니다.
 
+  마이그레이션 예시:
+
+  ```python
+  # 이전 (sync, 제거됨)
+  client = KhoaClient(api_key="...")
+  page = client.fetch("roms", ymin=34.0, ymax=34.1, xmin=123.2, xmax=123.3)
+  client.close()
+
+  # 이후 (async 전용)
+  async with KhoaClient(api_key="...") as client:
+      page = await client.afetch("roms", ymin=34.0, ymax=34.1, xmin=123.2, xmax=123.3)
+  ```
+
+  페이지 순회(`iter_pages()`/`iter_oceans_beach_info_pages()`)는 `for` 대신
+  `async for`로 `aiter_pages()`/`aiter_oceans_beach_info_pages()`를 순회합니다.
+
 ### Fixed
 
 - `abeach_index()`, `asurfing_index()` 등 `a` 접두 typed helper에서 `include_address=True`와
@@ -40,6 +57,9 @@
 - `vworld_client`를 넘기지 않고 `python-vworld-api`가 `AsyncVworldClient`를 제공하지
   않는 구버전일 때, 불명확한 `AttributeError` 대신 안내 메시지가 있는
   `KhoaRequestError`를 던지도록 수정했습니다.
+- `examples/streamlit_debug_ui.py`가 제거된 `KhoaClient.debug_fetch()`(sync)를
+  호출해 실행하면 바로 예외가 나던 문제를 `asyncio.run()`으로 `adebug_fetch()`를
+  호출하도록 수정했습니다.
 
 ### Changed
 
@@ -51,7 +71,3 @@
 - `docs/decisions.md`를 신설해 기존에 `CLAUDE.md`에 비공식으로만 남아 있던 구조적
   결정(문서 한글화, replay 기반 단위 테스트, `items.item` 정규화, 선행 0 식별자 보존,
   HTTPS-only 전송)을 정식 ADR로 승격했습니다.
-
-### Added
-
-- `LICENSE`(GPL-3.0-or-later 전문)를 추가했습니다.

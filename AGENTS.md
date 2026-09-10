@@ -90,8 +90,11 @@
 - `src/khoa/_convert.py`: 문자열, 날짜, 숫자, CSV 파라미터 변환.
 - `src/khoa/services.py`: KHOA ODMI 서비스 카탈로그.
 - `src/khoa/models.py`: 사용자에게 반환하는 Pydantic 모델.
+- `src/khoa/observatories.py`: KHOA 포털 관측소 목록 조회와 VWorld 주소 보강(async 전용).
+- `src/khoa/pagination.py`: `KhoaClient`가 공유하는 async 페이지 순회 헬퍼.
 - `src/khoa/exceptions.py`: 예외 계층.
 - `tests/`: 네트워크 없는 단위 테스트와 opt-in live test.
+- `examples/`: 선택 실행 도구(Streamlit 디버그 UI 등). public API가 바뀌면 여기도 같은 변경 안에서 갱신합니다.
 
 ## 반드시 지킬 것
 
