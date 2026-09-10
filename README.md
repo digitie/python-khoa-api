@@ -18,7 +18,9 @@ Python 클라이언트입니다.
 
 | 표면 | 진입점 | 설명 |
 |------|--------|------|
-| Python 라이브러리 | `from khoa import KhoaClient` | KHOA ODMI OpenAPI 범용/typed 호출을 동기·비동기(`KhoaClient.aio()`)로 제공 |
+| Python 라이브러리 | `from khoa import KhoaClient` | KHOA ODMI OpenAPI 범용/typed 호출을 async로 제공 (`KhoaClient` 직접 또는 접두사 없는 이름의 `KhoaClient.aio()`/`AsyncKhoaClient`) |
+
+이 라이브러리는 완전히 asyncio 기반입니다. 동기 진입점은 제공하지 않습니다.
 
 ## 먼저 읽을 문서
 
@@ -39,29 +41,35 @@ pip install -e .
 ## 빠른 시작
 
 ```python
+import asyncio
+
 from khoa import KhoaClient
 
-client = KhoaClient(api_key="...")  # 또는 KhoaClient()
 
-page = client.fetch(
-    "roms",
-    ymin=34.0,
-    ymax=34.1,
-    xmin=123.2,
-    xmax=123.3,
-    num_of_rows=10,
-)
+async def main() -> None:
+    async with KhoaClient(api_key="...") as client:  # 또는 KhoaClient()
+        page = await client.afetch(
+            "roms",
+            ymin=34.0,
+            ymax=34.1,
+            xmin=123.2,
+            xmax=123.3,
+            num_of_rows=10,
+        )
 
-for row in page.items:
-    print(row["predcDt"], row["lat"], row["lot"], row["wtem"])
+        for row in page.items:
+            print(row["predcDt"], row["lat"], row["lot"], row["wtem"])
+
+asyncio.run(main())
 ```
 
-`fetch()`는 `khoa.SERVICE_DEFINITIONS`의 서비스 key, KHOA `api_id`,
+`afetch()`는 `khoa.SERVICE_DEFINITIONS`의 서비스 key, KHOA `api_id`,
 operation 이름, 한글 제목을 모두 받을 수 있습니다.
 
-비동기 호출은 `python-krheritage-api`와 같은 facade 형태로 사용합니다.
-`KhoaClient.aio()`가 `AsyncKhoaClient`를 만들고, 메서드 이름은 동기
-클라이언트와 같습니다.
+`KhoaClient`의 메서드는 `afetch()`처럼 `a` 접두사가 붙어 있습니다.
+`python-krheritage-api`와 같은 접두사 없는 이름을 쓰고 싶다면
+`KhoaClient.aio()`(`AsyncKhoaClient`)를 사용합니다. 두 형태는 같은 구현을
+공유하며 이름만 다릅니다.
 
 ```python
 import asyncio
@@ -97,13 +105,13 @@ VWORLD_API_KEY=...
 자주 쓰는 KHOA 파라미터는 snake-case 별칭도 받을 수 있습니다.
 
 ```python
-page = client.fetch("dt_recent", obs_code="DT_0001", req_date="20260507")
+page = await client.afetch("dt_recent", obs_code="DT_0001", req_date="20260507")
 ```
 
 ROMS 행은 typed helper로도 받을 수 있습니다.
 
 ```python
-page = client.roms(ymin=34.0, ymax=34.1, xmin=123.2, xmax=123.3)
+page = await client.aroms(ymin=34.0, ymax=34.1, xmin=123.2, xmax=123.3)
 prediction = page.items[0]
 print(prediction.predicted_at, prediction.water_temperature_c)
 ```
@@ -111,7 +119,7 @@ print(prediction.predicted_at, prediction.water_temperature_c)
 모든 서비스 key는 동적 편의 메서드로도 호출할 수 있습니다.
 
 ```python
-page = client.rip_current(beach_code="BCH001", req_date="20260507")
+page = await client.rip_current(beach_code="BCH001", req_date="20260507")
 ```
 
 `beach_index()`는 해수욕지수 원문 행을 해수욕장별 DTO로 묶어 반환합니다.
@@ -120,8 +128,8 @@ page = client.rip_current(beach_code="BCH001", req_date="20260507")
 있고 `VWORLD_API_KEY`가 환경변수나 `.env` 파일에 있어야 합니다.
 
 ```python
-page = client.beach_index(num_of_rows=3)
-address_page = client.beach_index(
+page = await client.abeach_index(num_of_rows=3)
+address_page = await client.abeach_index(
     num_of_rows=3,
     include_address=True,
     vworld_env_file=".env",
@@ -141,11 +149,11 @@ feature의 기준 장소명, 시도/구군, 해변 폭/연장, 특징, 관련 �
 직접 노출합니다.
 
 ```python
-page = client.oceans_beach_info("제주", num_of_rows=100)
+page = await client.aoceans_beach_info("제주", num_of_rows=100)
 for beach in page.items:
     print(beach.source_key, beach.name, beach.latitude, beach.longitude)
 
-for page in client.iter_oceans_beach_info_pages():
+async for page in client.aiter_oceans_beach_info_pages():
     for beach in page.items:
         print(beach.sido_name, beach.gugun_name, beach.name)
 ```
@@ -157,7 +165,7 @@ KHOA 직접 endpoint인 `https://khoa.go.kr/oceandata/api/beach/search.do`는
 가능한 경우 함께 붙습니다.
 
 ```python
-result = client.beach_search("BCH001", service_key="...")
+result = await client.abeach_search("BCH001", service_key="...")
 print(result.name, result.parcel_address)
 for observation in result.observations:
     print(observation.observed_at, observation.water_temperature_c)
@@ -168,7 +176,7 @@ for observation in result.observations:
 VWorld 설정을 넘기면 원 좌표와 가까운 보정 좌표를 확인해 주소를 보강합니다.
 
 ```python
-surfing = client.surfing_index(
+surfing = await client.asurfing_index(
     num_of_rows=20,
     include_address=True,
     vworld_env_file=".env",
@@ -180,9 +188,10 @@ for forecast in place.forecasts:
     print(forecast.predicted_on, forecast.total_index, forecast.metrics)
 ```
 
-DTO 그룹핑 helper가 제공되는 지수는 `sea_split_index`, `fishing_index`,
-`seasickness_index`, `skin_scuba_index`, `mudflat_index`, `surfing_index`,
-`sea_trip_index`입니다.
+DTO 그룹핑 helper가 제공되는 지수는 `asea_split_index`, `afishing_index`,
+`aseasickness_index`, `askin_scuba_index`, `amudflat_index`, `asurfing_index`,
+`asea_trip_index`입니다(`KhoaClient.aio()`/`AsyncKhoaClient`에서는 접두사 없이
+`surfing_index` 형태로 호출합니다).
 
 ## 디버그 fixture
 
@@ -190,29 +199,35 @@ DTO 그룹핑 helper가 제공되는 지수는 `sea_split_index`, `fishing_index
 의존하지 않는 디버그 도구를 제공합니다.
 
 ```python
+import asyncio
+
 from khoa import KhoaClient, save_fixture
 
-client = KhoaClient(api_key="...")
-run = client.debug_fetch(
-    "roms",
-    ymin=34.0,
-    ymax=34.1,
-    xmin=123.2,
-    xmax=123.3,
-)
 
-path = save_fixture(
-    base_dir="tests/fixtures",
-    function_name="roms",
-    case_name="roms_basic",
-    description="ROMS 기본 응답 replay",
-    input_data=run.input,
-    request_data=run.request,
-    response_data=run.response,
-    parsed_result=run.parsed,
-    processed_result=run.processed,
-)
-print(path)
+async def main() -> None:
+    async with KhoaClient(api_key="...") as client:
+        run = await client.adebug_fetch(
+            "roms",
+            ymin=34.0,
+            ymax=34.1,
+            xmin=123.2,
+            xmax=123.3,
+        )
+
+    path = save_fixture(
+        base_dir="tests/fixtures",
+        function_name="roms",
+        case_name="roms_basic",
+        description="ROMS 기본 응답 replay",
+        input_data=run.input,
+        request_data=run.request,
+        response_data=run.response,
+        parsed_result=run.parsed,
+        processed_result=run.processed,
+    )
+    print(path)
+
+asyncio.run(main())
 ```
 
 fixture 저장 전 `serviceKey`, `api_key`, `Authorization`, token 값은 자동으로
@@ -255,7 +270,6 @@ for item in get_api_catalog():
 from khoa import (
     BEACH_INFO_UPDATE_INTERVAL_MINUTES,
     BEACH_OBSERVATORIES,
-    fetch_observatory_list,
     get_beach_observatories,
 )
 
@@ -266,25 +280,24 @@ beach = get_beach_observatories()[0]
 print(beach.latitude, beach.longitude)
 print(beach.parcel_address, beach.road_address)
 print(beach.legal_dong_code, beach.road_address_code, beach.detail_address)
-
-live = fetch_observatory_list("36")  # KHOA 포털 AJAX 엔드포인트로 POST
 ```
 
-라이브 포털 목록에도 주소를 붙여야 하면 `vworld` 클라이언트를 넘깁니다.
+라이브 포털 목록은 `afetch_observatory_list()`로 비동기 조회합니다.
 
 ```python
-from vworld import VworldClient
-from khoa import fetch_observatory_list
+import asyncio
 
-vworld = VworldClient.from_env()
-live = fetch_observatory_list("36", include_address=True, vworld_client=vworld)
+from khoa import afetch_observatory_list
+
+
+async def main() -> None:
+    live = await afetch_observatory_list("36")  # KHOA 포털 AJAX 엔드포인트로 POST
+    print(len(live))
+
+asyncio.run(main())
 ```
 
-`fetch_observatory_list()`, `fetch_openapi_info()`, `fetch_beach_observatories()`,
-`enrich_observatory_addresses()`는 모두 `afetch_observatory_list()` 등 `a` 접두 비동기
-버전이 있습니다. 이벤트 루프 안에서는 sync 버전 대신 async 버전을 사용해야 루프를
-막지 않습니다. 주소 보강에 async 버전을 쓰면 `vworld_client`에는 동기 `VworldClient`
-대신 `AsyncVworldClient`를 넘깁니다.
+라이브 포털 목록에도 주소를 붙여야 하면 `AsyncVworldClient`를 넘깁니다.
 
 ```python
 import asyncio
@@ -303,12 +316,11 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-동기 facade(`fetch_observatory_list()`, `KhoaClient.beach_index()` 등)에는 동기
-`VworldClient`/`requests.Session` 계열만, async facade(`afetch_observatory_list()`,
-`AsyncKhoaClient`, `KhoaClient.abeach_index()` 등)에는 async `AsyncVworldClient` 계열만
-넘기세요. 방향을 섞으면(예: 이미 실행 중인 이벤트 루프 안에서 sync facade에
-`AsyncVworldClient`를 넘기거나, async facade에 동기 클라이언트를 넘기는 경우) 각각
-"다른 루프에 연결된 Future" 오류나 이벤트 루프 블로킹이 발생할 수 있습니다.
+`vworld_client=`에는 반드시 async `AsyncVworldClient` 계열만 넘기세요. 동기
+`VworldClient`를 넘기면 그 블로킹 호출이 코루틴 안에서 그대로 실행되어
+이벤트 루프를 막습니다. 같은 이유로 `KhoaClient(session=...)`에 동기
+`requests.Session` 계열을 직접 주입하는 것도 피하세요(테스트용 fake 객체는
+예외 — 실제 네트워크 호출을 하지 않으므로 블로킹이 없습니다).
 
 ## 카탈로그
 

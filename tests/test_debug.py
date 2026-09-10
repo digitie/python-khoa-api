@@ -11,7 +11,8 @@ from khoa.debug import jsonable, redact_sensitive, save_fixture, slugify_case_na
 from .conftest import FakeResponse, khoa_payload
 
 
-def test_jsonable_converts_pydantic_models(fake_client_factory):
+@pytest.mark.asyncio
+async def test_jsonable_converts_pydantic_models(fake_client_factory):
     row = {
         "predcDt": "2024-11-01 00:00:00",
         "lat": "39.19335",
@@ -22,7 +23,7 @@ def test_jsonable_converts_pydantic_models(fake_client_factory):
     }
     client, _session = fake_client_factory(FakeResponse(khoa_payload(row)))
 
-    page = client.roms(ymin=34.0, ymax=34.1, xmin=123.2, xmax=123.3)
+    page = await client.aroms(ymin=34.0, ymax=34.1, xmin=123.2, xmax=123.3)
     payload = jsonable(page)
 
     assert payload["items"][0]["predicted_at"] == "2024-11-01T00:00:00+09:00"
@@ -77,11 +78,12 @@ def test_save_fixture_writes_redacted_json_and_prevents_overwrite(tmp_path: Path
         )
 
 
-def test_debug_fetch_returns_debug_run(fake_client_factory):
+@pytest.mark.asyncio
+async def test_debug_fetch_returns_debug_run(fake_client_factory):
     row = {"predcDt": "2024-11-01 00:00:00", "lat": "34.01", "lot": "123.2"}
     client, _session = fake_client_factory(FakeResponse(khoa_payload(row)))
 
-    run = client.debug_fetch(
+    run = await client.adebug_fetch(
         "roms",
         ymin=34.0,
         ymax=34.1,
@@ -101,11 +103,12 @@ def test_debug_fetch_returns_debug_run(fake_client_factory):
     assert any("서비스키 신청 링크:" in item for item in run.trace)
 
 
-def test_debug_fetch_captures_errors_without_raising(monkeypatch):
+@pytest.mark.asyncio
+async def test_debug_fetch_captures_errors_without_raising(monkeypatch):
     monkeypatch.delenv("DATA_GO_KR_SERVICE_KEY", raising=False)
     client = KhoaClient(api_key="TEST_KEY", retries=0)
 
-    run = client.debug_fetch("dt_recent")
+    run = await client.adebug_fetch("dt_recent")
 
     assert run.error is not None
     assert run.error["type"] == "KhoaRequestError"

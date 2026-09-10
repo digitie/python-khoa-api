@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 import json
 import os
@@ -28,6 +29,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - 선택 실행 도구
     raise SystemExit('Streamlit UI를 쓰려면 `pip install -e ".[debug-ui]"`를 실행하세요.') from exc
 
 from khoa import (
+    DebugRun,
     KhoaClient,
     get_api_catalog,
     get_service_key,
@@ -147,6 +149,29 @@ def main() -> None:
         _fixture_tab(fixture_base_dir, selected)
 
 
+async def _fetch_debug_run(
+    selected: dict[str, Any],
+    api_key: str,
+    *,
+    timeout: float,
+    params: dict[str, Any],
+    request_options: dict[str, Any],
+) -> DebugRun:
+    async with KhoaClient(
+        api_key=api_key or None,
+        key_source=selected["data_source"],
+        timeout=timeout,
+        retries=0,
+    ) as client:
+        return await client.adebug_fetch(
+            selected["service_key"],
+            params=params,
+            page_no=request_options["page_no"],
+            num_of_rows=request_options["num_of_rows"],
+            response_type=request_options["response_type"],
+        )
+
+
 def _raw_response_tab(selected: dict[str, Any], api_key: str, *, timeout: float) -> None:
     st.subheader(selected["dataset_name"])
     st.caption(f"{selected['data_source']} / {selected['service_path']} / {selected['operation']}")
@@ -173,18 +198,14 @@ def _raw_response_tab(selected: dict[str, Any], api_key: str, *, timeout: float)
         return
 
     try:
-        client = KhoaClient(
-            api_key=api_key or None,
-            key_source=selected["data_source"],
-            timeout=timeout,
-            retries=0,
-        )
-        run = client.debug_fetch(
-            selected["service_key"],
-            params=params,
-            page_no=request_options["page_no"],
-            num_of_rows=request_options["num_of_rows"],
-            response_type=request_options["response_type"],
+        run = asyncio.run(
+            _fetch_debug_run(
+                selected,
+                api_key,
+                timeout=timeout,
+                params=params,
+                request_options=request_options,
+            )
         )
     except Exception as exc:  # pragma: no cover - UI 표시
         st.error(str(exc))

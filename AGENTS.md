@@ -2,7 +2,7 @@
 
 ## 목표
 
-`python-khoa-api`는 data.go.kr을 통해 제공되는 국립해양조사원 KHOA 바다누리 ODMI OpenAPI의 비공식 Python 클라이언트다. Python import 패키지 이름은 `khoa`이며, 범용 호출 `KhoaClient.fetch()`와 안정적으로 모델링한 typed helper, Pydantic 모델 DTO를 함께 제공한다. 작업 전에 세부 API 목록은 `docs/openapi-catalog.md`, 테스트 규칙은 `docs/testing.md`, 사용자 예시는 `README.md`를 함께 확인한다.
+`python-khoa-api`는 data.go.kr을 통해 제공되는 국립해양조사원 KHOA 바다누리 ODMI OpenAPI의 비공식 Python 클라이언트다. Python import 패키지 이름은 `khoa`이며, 범용 호출 `KhoaClient.afetch()`와 안정적으로 모델링한 typed helper, Pydantic 모델 DTO를 async 전용으로 함께 제공한다. 작업 전에 세부 API 목록은 `docs/openapi-catalog.md`, 테스트 규칙은 `docs/testing.md`, 사용자 예시는 `README.md`를 함께 확인한다.
 
 ## Think Before Coding
 
@@ -62,7 +62,8 @@
 - Python import 패키지 이름은 `khoa`입니다.
 - 대상 API는 data.go.kr을 통해 제공되는 KHOA ODMI 국가중점 OpenAPI입니다.
 - 서비스 카탈로그의 기준 문서는 `docs/openapi-catalog.md`입니다.
-- 범용 호출은 `KhoaClient.fetch()`가 담당하고, 안정적으로 모델링한 응답은 별도 typed helper와 Pydantic 모델로 제공합니다.
+- 범용 호출은 `KhoaClient.afetch()`가 담당하고, 안정적으로 모델링한 응답은 별도 typed helper와 Pydantic 모델로 제공합니다.
+- `khoa`는 asyncio 전용 라이브러리입니다. sync 진입점을 다시 추가하지 않습니다.
 - Python 지원 기준은 `pyproject.toml`의 `requires-python`을 따릅니다.
 - 기본 테스트는 실제 네트워크 호출 없이 동작해야 합니다.
 - 실제 API 테스트는 `PYKHOA_RUN_LIVE=1`과 `DATA_GO_KR_SERVICE_KEY`가 있을 때만 실행합니다.
@@ -89,8 +90,11 @@
 - `src/khoa/_convert.py`: 문자열, 날짜, 숫자, CSV 파라미터 변환.
 - `src/khoa/services.py`: KHOA ODMI 서비스 카탈로그.
 - `src/khoa/models.py`: 사용자에게 반환하는 Pydantic 모델.
+- `src/khoa/observatories.py`: KHOA 포털 관측소 목록 조회와 VWorld 주소 보강(async 전용).
+- `src/khoa/pagination.py`: `KhoaClient`가 공유하는 async 페이지 순회 헬퍼.
 - `src/khoa/exceptions.py`: 예외 계층.
 - `tests/`: 네트워크 없는 단위 테스트와 opt-in live test.
+- `examples/`: 선택 실행 도구(Streamlit 디버그 UI 등). public API가 바뀌면 여기도 같은 변경 안에서 갱신합니다.
 
 ## 반드시 지킬 것
 

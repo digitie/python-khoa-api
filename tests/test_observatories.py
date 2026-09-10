@@ -16,8 +16,6 @@ from khoa import (
     aenrich_observatory_addresses,
     afetch_observatory_list,
     afetch_openapi_info,
-    enrich_observatory_addresses,
-    fetch_observatory_list,
     get_beach_observatories,
     get_builtin_observatory_list,
 )
@@ -123,7 +121,8 @@ def test_builtin_observatory_lookup_by_openapi_id():
     assert get_builtin_observatory_list(BEACH_OPENAPI_ID) is BEACH_OBSERVATORIES
 
 
-def test_fetch_observatory_list_uses_nonstandard_portal_endpoint():
+@pytest.mark.asyncio
+async def test_afetch_observatory_list_uses_nonstandard_portal_endpoint():
     session = FakePortalSession(
         FakePortalResponse(
             {
@@ -140,7 +139,7 @@ def test_fetch_observatory_list_uses_nonstandard_portal_endpoint():
         )
     )
 
-    observatories = fetch_observatory_list(session=session)
+    observatories = await afetch_observatory_list(session=session)
 
     assert session.calls[0]["url"] == KHOA_OPENAPI_INFO_URL
     assert session.calls[0]["data"] == {"id": BEACH_OPENAPI_ID}
@@ -151,7 +150,8 @@ def test_fetch_observatory_list_uses_nonstandard_portal_endpoint():
     assert observatories[0].lon == 129.159
 
 
-def test_fetch_observatory_list_can_enrich_address_from_vworld_payload():
+@pytest.mark.asyncio
+async def test_afetch_observatory_list_can_enrich_address_from_sync_vworld_client():
     session = FakePortalSession(
         FakePortalResponse(
             {
@@ -169,7 +169,7 @@ def test_fetch_observatory_list_can_enrich_address_from_vworld_payload():
     )
     vworld = FakeVworldClient(_vworld_address_payload())
 
-    observatories = fetch_observatory_list(
+    observatories = await afetch_observatory_list(
         session=session,
         include_address=True,
         vworld_client=vworld,
@@ -216,10 +216,13 @@ def test_get_beach_observatories_returns_bundled_address_fields():
     )
 
 
-def test_enrich_observatory_addresses_accepts_small_tuple():
+@pytest.mark.asyncio
+async def test_aenrich_observatory_addresses_accepts_sync_vworld_client():
     vworld = FakeVworldClient(_vworld_address_payload())
 
-    observatories = enrich_observatory_addresses(BEACH_OBSERVATORIES[:1], vworld_client=vworld)
+    observatories = await aenrich_observatory_addresses(
+        BEACH_OBSERVATORIES[:1], vworld_client=vworld
+    )
 
     assert observatories[0].legal_dong_code == "2635010500"
     assert observatories[0].address_latitude == observatories[0].lat
@@ -253,36 +256,6 @@ async def test_afetch_observatory_list_awaits_async_portal_session_and_vworld_cl
     )
 
     assert session.calls[0]["url"] == KHOA_OPENAPI_INFO_URL
-    assert observatories[0].id == "BCH001"
-    assert observatories[0].legal_dong_code == "2635010500"
-    assert len(vworld.calls) == 1
-
-
-@pytest.mark.asyncio
-async def test_afetch_observatory_list_accepts_sync_fakes_too():
-    session = FakePortalSession(
-        FakePortalResponse(
-            {
-                "observatoryList": [
-                    {
-                        "id": "BCH001",
-                        "name": "해운대해수욕장",
-                        "data_type": "BEACH",
-                        "lat": 35.158,
-                        "lon": 129.159,
-                    }
-                ]
-            }
-        )
-    )
-    vworld = FakeVworldClient(_vworld_address_payload())
-
-    observatories = await afetch_observatory_list(
-        session=session,
-        include_address=True,
-        vworld_client=vworld,
-    )
-
     assert observatories[0].id == "BCH001"
     assert observatories[0].legal_dong_code == "2635010500"
     assert len(vworld.calls) == 1

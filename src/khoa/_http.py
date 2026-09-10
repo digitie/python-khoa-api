@@ -5,10 +5,9 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
-from collections.abc import Awaitable, Callable, Coroutine, Mapping
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Awaitable, Mapping
 from threading import Lock
-from typing import Any, Protocol, TypeVar, cast
+from typing import Any, Protocol, cast
 from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
@@ -50,19 +49,6 @@ TRANSIENT_STATUSES = {429, 500, 502, 503, 504}
 DEFAULT_USER_AGENT = "python-khoa-api/0.1 (+https://www.khoa.go.kr/oceandata/openapi/odmi)"
 DEFAULT_MAX_RPS = 5.0
 ALLOWED_BASE_URL_HOSTS = {"apis.data.go.kr"}
-R = TypeVar("R")
-
-
-def run_async(awaitable_factory: Callable[[], Coroutine[Any, Any, R]]) -> R:
-    """동기 facade에서 async 구현을 실행합니다."""
-
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(awaitable_factory())
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(lambda: asyncio.run(awaitable_factory())).result()
 
 
 def build_session(retries: int = 3, *, timeout: float = 10.0) -> SessionLike:
@@ -143,15 +129,6 @@ class KhoaHttp:
         self.retries = retries
         self._bucket = AsyncTokenBucket(max_rps)
 
-    def get(
-        self,
-        service: ServiceDefinition,
-        params: Mapping[str, Any],
-    ) -> tuple[Mapping[str, Any], str]:
-        """서비스를 호출하고 디코딩된 JSON payload와 요청 URL을 반환합니다."""
-
-        return run_async(lambda: self.aget(service, params))
-
     async def aget(
         self,
         service: ServiceDefinition,
@@ -191,25 +168,6 @@ class KhoaHttp:
                 failure_kind="parse",
             )
         return payload, url
-
-    def get_url(
-        self,
-        url: str,
-        params: Mapping[str, Any],
-        *,
-        endpoint: str,
-        service_key: str | None = None,
-    ) -> tuple[Mapping[str, Any], str]:
-        """서비스 정의 밖의 JSON URL을 호출합니다."""
-
-        return run_async(
-            lambda: self.aget_url(
-                url,
-                params,
-                endpoint=endpoint,
-                service_key=service_key,
-            )
-        )
 
     async def aget_url(
         self,
@@ -263,11 +221,6 @@ class KhoaHttp:
         close = getattr(self.session, "close", None)
         if close is not None:
             await asyncio.to_thread(close)
-
-    def close(self) -> None:
-        """동기 facade에서 세션을 닫습니다."""
-
-        run_async(self.aclose)
 
     async def _request_with_retries(
         self,
