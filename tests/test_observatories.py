@@ -4,12 +4,16 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
+import pytest
+
 from khoa import (
     BEACH_INFO_UPDATE_INTERVAL_MINUTES,
     BEACH_OBSERVATORIES,
     BEACH_OBSERVATORY_COUNT,
     BEACH_OPENAPI_ID,
     KHOA_OPENAPI_INFO_URL,
+    aenrich_observatory_addresses,
+    afetch_observatory_list,
     enrich_observatory_addresses,
     fetch_observatory_list,
     get_beach_observatories,
@@ -58,6 +62,42 @@ class FakeVworldClient:
         self.calls: list[dict[str, Any]] = []
 
     def reverse_geocode_latlon(self, lat: float, lon: float, **kwargs: Any) -> Mapping[str, Any]:
+        self.calls.append({"lat": lat, "lon": lon, "kwargs": dict(kwargs)})
+        return self.payload
+
+
+class AsyncFakePortalSession:
+    def __init__(self, response: FakePortalResponse) -> None:
+        self.response = response
+        self.calls: list[dict[str, Any]] = []
+
+    async def post(
+        self,
+        url: str,
+        *,
+        data: Mapping[str, Any],
+        headers: Mapping[str, str],
+        timeout: float,
+    ) -> FakePortalResponse:
+        self.calls.append(
+            {
+                "url": url,
+                "data": dict(data),
+                "headers": dict(headers),
+                "timeout": timeout,
+            }
+        )
+        return self.response
+
+
+class AsyncFakeVworldClient:
+    def __init__(self, payload: Mapping[str, Any]) -> None:
+        self.payload = payload
+        self.calls: list[dict[str, Any]] = []
+
+    async def reverse_geocode_latlon(
+        self, lat: float, lon: float, **kwargs: Any
+    ) -> Mapping[str, Any]:
         self.calls.append({"lat": lat, "lon": lon, "kwargs": dict(kwargs)})
         return self.payload
 
@@ -181,6 +221,80 @@ def test_enrich_observatory_addresses_accepts_small_tuple():
     assert observatories[0].legal_dong_code == "2635010500"
     assert observatories[0].address_latitude == observatories[0].lat
     assert observatories[0].address_longitude == observatories[0].lon
+    assert len(vworld.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_afetch_observatory_list_awaits_async_portal_session_and_vworld_client():
+    session = AsyncFakePortalSession(
+        FakePortalResponse(
+            {
+                "observatoryList": [
+                    {
+                        "id": "BCH001",
+                        "name": "해운대해수욕장",
+                        "data_type": "BEACH",
+                        "lat": 35.158,
+                        "lon": 129.159,
+                    }
+                ]
+            }
+        )
+    )
+    vworld = AsyncFakeVworldClient(_vworld_address_payload())
+
+    observatories = await afetch_observatory_list(
+        session=session,
+        include_address=True,
+        vworld_client=vworld,
+    )
+
+    assert session.calls[0]["url"] == KHOA_OPENAPI_INFO_URL
+    assert observatories[0].id == "BCH001"
+    assert observatories[0].legal_dong_code == "2635010500"
+    assert len(vworld.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_afetch_observatory_list_accepts_sync_fakes_too():
+    session = FakePortalSession(
+        FakePortalResponse(
+            {
+                "observatoryList": [
+                    {
+                        "id": "BCH001",
+                        "name": "해운대해수욕장",
+                        "data_type": "BEACH",
+                        "lat": 35.158,
+                        "lon": 129.159,
+                    }
+                ]
+            }
+        )
+    )
+    vworld = FakeVworldClient(_vworld_address_payload())
+
+    observatories = await afetch_observatory_list(
+        session=session,
+        include_address=True,
+        vworld_client=vworld,
+    )
+
+    assert observatories[0].id == "BCH001"
+    assert observatories[0].legal_dong_code == "2635010500"
+    assert len(vworld.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_aenrich_observatory_addresses_awaits_async_vworld_client():
+    vworld = AsyncFakeVworldClient(_vworld_address_payload())
+
+    observatories = await aenrich_observatory_addresses(
+        BEACH_OBSERVATORIES[:1],
+        vworld_client=vworld,
+    )
+
+    assert observatories[0].legal_dong_code == "2635010500"
     assert len(vworld.calls) == 1
 
 

@@ -280,6 +280,29 @@ vworld = VworldClient.from_env()
 live = fetch_observatory_list("36", include_address=True, vworld_client=vworld)
 ```
 
+`fetch_observatory_list()`, `fetch_openapi_info()`, `fetch_beach_observatories()`,
+`enrich_observatory_addresses()`는 모두 `afetch_observatory_list()` 등 `a` 접두 비동기
+버전이 있습니다. 이벤트 루프 안에서는 sync 버전 대신 async 버전을 사용해야 루프를
+막지 않습니다. 주소 보강에 async 버전을 쓰면 `vworld_client`에는 동기 `VworldClient`
+대신 `AsyncVworldClient`를 넘깁니다.
+
+```python
+import asyncio
+
+from vworld import AsyncVworldClient
+from khoa import afetch_observatory_list
+
+
+async def main() -> None:
+    async with AsyncVworldClient.from_env() as vworld:
+        live = await afetch_observatory_list(
+            "36", include_address=True, vworld_client=vworld
+        )
+        print(len(live))
+
+asyncio.run(main())
+```
+
 ## 카탈로그
 
 ```python

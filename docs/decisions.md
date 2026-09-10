@@ -150,3 +150,50 @@ API에 다시 넘길 때 거부되거나 다른 대상을 가리키게 된다.
 
 회귀 테스트로 요청 URL이 `https://`로 시작하는지 검증한다. `docs/repeated-mistakes.md`
 "API 키와 live test" 절에 반영.
+
+---
+
+## D-006: 관측소 목록/주소 보강 경로를 asyncio 기반으로 전환한다
+
+- 상태: accepted
+- 날짜: 2026-09-11
+
+### 컨텍스트
+
+`src/khoa/client.py`의 `afetch()`, `abeach_search()`, `aoceans_beach_info()`는
+이미 `httpx.AsyncClient`로 완전히 비동기였지만, `src/khoa/observatories.py`의
+`fetch_openapi_info()`(KHOA 포털 AJAX 호출)와 `enrich_observatory_addresses()`
+(VWorld 역지오코딩 호출)는 `requests`와 동기 VWorld 클라이언트만 사용했다.
+`abeach_index()`와 바다 지수류 typed helper(`asurfing_index()` 등)는
+`include_address=True`와 live VWorld 옵션이 있을 때 이 동기 함수를 코루틴
+안에서 그대로 호출했으므로, 자체 이벤트 루프를 가진 애플리케이션(FastAPI 등)에서
+호출하면 그 루프 전체가 VWorld 응답을 기다리는 동안 멈췄다. 게다가 async
+VWorld 클라이언트(`AsyncVworldClient`)를 `vworld_client`로 넘기면 코루틴
+객체를 dict로 다루려다 그대로 실패했다.
+
+### 결정
+
+`observatories.py`에 `afetch_openapi_info()`, `afetch_observatory_list()`,
+`afetch_beach_observatories()`, `aenrich_observatory_addresses()`를 추가해
+포털 POST와 VWorld 역지오코딩 호출을 `httpx.AsyncClient`/`AsyncVworldClient`
+기반으로 다시 구현했다. 기존 동기 함수는 얇은 `run_async()` 래퍼로 바꿔 단일
+구현만 유지한다. `PortalSessionLike.post()`와 `VworldReverseGeocoderLike.
+reverse_geocode_latlon()`은 `_http.py`의 `SessionLike.get()`과 같은 방식으로
+반환값이 결과 또는 결과의 Awaitable일 수 있게 해, 기존 동기 fake session/client도
+그대로 동작한다. `client.py`의 `abeach_index()`와 `a*_index()`(바다 지수류)는
+더 이상 동기 주소 보강 함수를 코루틴에서 직접 호출하지 않고, 새 async 버전을
+`await`하는 `_abeach_index_place_page()`/`_amarine_index_place_page()`를
+사용한다.
+
+### 근거
+
+`_http.py`가 이미 검증한 "동기/async 겸용 프로토콜 + `run_async()` 위임" 패턴을
+그대로 재사용하면 중복 구현 없이 동기 API 호환성을 깨지 않고 실제 논블로킹
+async 경로를 만들 수 있다. `python-vworld-api`가 이미 `AsyncVworldClient`를
+제공하므로 새 wrapper 없이 그 구현을 직접 사용한다(`AGENTS.md`의 구현 방향).
+
+### 결과
+
+`src/khoa/__init__.py`가 새 async 함수들을 내보내고, `README.md`에 async 사용
+예시를 추가했다. `tests/test_observatories.py`, `tests/test_client.py`에
+async fake portal session/VWorld client를 이용한 회귀 테스트를 추가했다.

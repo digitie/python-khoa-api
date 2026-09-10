@@ -34,6 +34,18 @@ class FakeVworldClient:
         return self.payload
 
 
+class AsyncFakeVworldClient:
+    def __init__(self, payload: Mapping[str, Any]) -> None:
+        self.payload = payload
+        self.calls: list[dict[str, Any]] = []
+
+    async def reverse_geocode_latlon(
+        self, lat: float, lon: float, **kwargs: Any
+    ) -> Mapping[str, Any]:
+        self.calls.append({"lat": lat, "lon": lon, "kwargs": dict(kwargs)})
+        return self.payload
+
+
 def test_fetch_builds_request_and_normalizes_items(fake_client_factory):
     row = {"predcDt": "2024-11-01 00:00:00", "lat": "34.01", "lot": "123.2"}
     client, session = fake_client_factory(FakeResponse(khoa_payload(row)))
@@ -245,6 +257,27 @@ def test_beach_index_can_include_vworld_address(fake_client_factory):
     assert first.address_latitude == pytest.approx(35.1585)
     assert first.address_longitude == pytest.approx(129.1585)
     assert first.address_match_type == "nearby"
+    assert first.address_source == "vworld"
+    assert len(vworld.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_abeach_index_awaits_async_vworld_client(fake_client_factory):
+    row = {
+        "bbchNm": "해운대해수욕장",
+        "lat": 35.158,
+        "lot": 129.159,
+        "predcYmd": "2026-05-13",
+        "predcNoonSeCd": "오전",
+    }
+    client, _session = fake_client_factory(FakeResponse(_top_level_khoa_payload([row, row])))
+    vworld = AsyncFakeVworldClient(_vworld_address_payload())
+
+    page = await client.abeach_index(include_address=True, vworld_client=vworld, num_of_rows=2)
+
+    first = page.items[0]
+    assert len(page.items) == 1
+    assert first.legal_dong_code == "2635010500"
     assert first.address_source == "vworld"
     assert len(vworld.calls) == 1
 
@@ -499,6 +532,30 @@ def test_surfing_index_groups_places_and_enriches_address_once(fake_client_facto
     assert first.forecasts[0].metrics["avgWvhgt"] == "0.4"
     assert first.parcel_address == "부산광역시 해운대구 우동 622-8"
     assert len(vworld.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_asurfing_index_awaits_async_vworld_client(fake_client_factory):
+    rows = [
+        {
+            "surfPlcNm": "Surf A",
+            "lat": "35.0",
+            "lot": "129.0",
+            "predcYmd": "20260513",
+            "predcNoonSeCd": "AM",
+            "avgWvhgt": "0.4",
+            "totalIndex": "80",
+        },
+    ]
+    client, _session = fake_client_factory(FakeResponse(khoa_payload(rows)))
+    vworld = AsyncFakeVworldClient(_vworld_address_payload())
+
+    page = await client.asurfing_index(include_address=True, vworld_client=vworld, num_of_rows=1)
+
+    assert len(page.items) == 1
+    first = page.items[0]
+    assert first.parcel_address == "부산광역시 해운대구 우동 622-8"
+    assert len(vworld.calls) == 1
 
 
 def test_iter_pages_stops_after_total_count(fake_client_factory):
