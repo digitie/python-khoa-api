@@ -316,11 +316,10 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`vworld_client=`에는 반드시 async `AsyncVworldClient` 계열만 넘기세요. 동기
-`VworldClient`를 넘기면 그 블로킹 호출이 코루틴 안에서 그대로 실행되어
-이벤트 루프를 막습니다. 같은 이유로 `KhoaClient(session=...)`에 동기
-`requests.Session` 계열을 직접 주입하는 것도 피하세요(테스트용 fake 객체는
-예외 — 실제 네트워크 호출을 하지 않으므로 블로킹이 없습니다).
+`vworld_client=`에는 async `AsyncVworldClient` 계열을 전달하세요.
+`KhoaClient(session=...)`의 `get()`과 포털 세션의 `post()`도 `async def`여야 합니다.
+동기 구현은 호출 전에 `TypeError`로 거부합니다. 테스트용 fake 세션도 같은 계약을
+따릅니다. 세션과 클라이언트는 하나의 이벤트 루프에서 생성·사용·종료하세요.
 
 ## 카탈로그
 
@@ -388,3 +387,8 @@ data.go.kr가 HTTP 403을 반환하면 게이트웨이에는 도달했지만 해
 ## 법적 고지
 
 이 저장소의 라이선스(GPL-3.0-or-later, [`LICENSE`](LICENSE) 참고)는 이 저장소에 포함된 소스 코드와 문서에만 적용됩니다. 이 라이브러리가 감싸는 국립해양조사원 KHOA ODMI OpenAPI, data.go.kr 게이트웨이, 공공데이터포털, VWorld 등 외부 데이터/API의 이용은 각 제공 기관의 이용약관과 재배포 조건을 따르며, 이 패키지는 그 데이터의 정확성이나 법적 효력을 보장하지 않습니다.
+
+## TPS 설정
+
+`max_rps`로 초당 충전량을 지정한다. 소수 TPS·burst·취소 동작과
+공유 범위는 [비동기 TPS 제어](docs/async-tps.md)를 참고한다.

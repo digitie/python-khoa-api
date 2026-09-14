@@ -1,6 +1,7 @@
 """KHOA ODMI OpenAPI 서비스를 위한 Python 헬퍼."""
 
 from ._convert import normalize_service_key
+from ._ratelimit import AsyncTokenBucket as AsyncTokenBucket
 from .client import (
     KHOA_BEACH_SEARCH_URL,
     OCEANS_BEACH_INFO_DATA_GO_KR_ID,
@@ -82,6 +83,7 @@ from .services import (
 )
 
 __all__ = [
+    "AsyncTokenBucket",
     "DEFAULT_BASE_URL",
     "DEFAULT_ASSERTION",
     "DATA_GO_KR_ENV_NAMES",
