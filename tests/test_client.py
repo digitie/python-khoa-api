@@ -29,7 +29,9 @@ class FakeVworldClient:
         self.payload = payload
         self.calls: list[dict[str, Any]] = []
 
-    def reverse_geocode_latlon(self, lat: float, lon: float, **kwargs: Any) -> Mapping[str, Any]:
+    async def reverse_geocode_latlon(
+        self, lat: float, lon: float, **kwargs: Any
+    ) -> Mapping[str, Any]:
         self.calls.append({"lat": lat, "lon": lon, "kwargs": dict(kwargs)})
         return self.payload
 
@@ -173,8 +175,7 @@ def test_service_key_loader_supports_source_specific_keys(tmp_path, monkeypatch)
     monkeypatch.delenv("KHOA_DIRECT_SERVICE_KEY", raising=False)
     env_file = tmp_path / ".env"
     env_file.write_text(
-        "DATA_GO_KR_SERVICE_KEY=DATA_KEY\n"
-        "KHOA_DIRECT_SERVICE_KEY= DIRECT_ KEY \n",
+        "DATA_GO_KR_SERVICE_KEY=DATA_KEY\nKHOA_DIRECT_SERVICE_KEY= DIRECT_ KEY \n",
         encoding="utf-8",
     )
 
@@ -626,9 +627,7 @@ async def test_first_raises_no_data(fake_client_factory):
 
 
 def test_env_constructor_errors(monkeypatch):
-    names = (
-        "DATA_GO_KR_SERVICE_KEY",
-    )
+    names = ("DATA_GO_KR_SERVICE_KEY",)
     for name in names:
         monkeypatch.delenv(name, raising=False)
 

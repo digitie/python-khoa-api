@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import time
-from collections.abc import Awaitable, Mapping
-from threading import Lock
+from collections.abc import Mapping
 from typing import Any, Protocol, cast
 from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
 import httpx
-import requests
 
 from ._convert import normalize_service_key, without_none
+from ._httpx import send_after_token
+from ._ratelimit import AsyncTokenBucket
 from .exceptions import (
     KhoaAuthError,
     KhoaParseError,
@@ -36,13 +35,13 @@ class ResponseLike(Protocol):
 
 
 class SessionLike(Protocol):
-    def get(
+    async def get(
         self,
         url: str,
         *,
         params: Mapping[str, Any],
         timeout: float,
-    ) -> ResponseLike | Awaitable[ResponseLike]: ...
+    ) -> ResponseLike: ...
 
 
 TRANSIENT_STATUSES = {429, 500, 502, 503, 504}
@@ -63,36 +62,6 @@ def build_session(retries: int = 3, *, timeout: float = 10.0) -> SessionLike:
             follow_redirects=True,
         ),
     )
-
-
-class AsyncTokenBucket:
-    """단순 async 토큰 버킷 속도 제한기.
-
-    인스턴스별로 격리되며 여러 인스턴스 간에 공유되지 않으므로, 동일한 upstream
-    quota를 공유하려면 하나의 KhoaClient/KhoaHttp 인스턴스를 재사용해야 합니다.
-    """
-
-    def __init__(self, max_rps: float = DEFAULT_MAX_RPS) -> None:
-        if max_rps <= 0:
-            raise ValueError("max_rps must be greater than 0")
-        self.max_rps = max_rps
-        self.capacity = max_rps
-        self._tokens = max_rps
-        self._updated_at = time.monotonic()
-        self._lock = Lock()
-
-    async def acquire(self) -> None:
-        while True:
-            with self._lock:
-                now = time.monotonic()
-                elapsed = now - self._updated_at
-                self._updated_at = now
-                self._tokens = min(self.capacity, self._tokens + elapsed * self.max_rps)
-                if self._tokens >= 1:
-                    self._tokens -= 1
-                    return
-                wait_for = (1 - self._tokens) / self.max_rps
-            await asyncio.sleep(wait_for)
 
 
 class KhoaHttp:
@@ -124,6 +93,8 @@ class KhoaHttp:
             )
         self.base_url = base_url
         self.service_key_param = service_key_param
+        if session is not None and not inspect.iscoroutinefunction(session.get):
+            raise TypeError("session.get must be async")
         self.session = session
         self.timeout = timeout
         self.retries = retries
@@ -214,13 +185,9 @@ class KhoaHttp:
 
         aclose = getattr(self.session, "aclose", None)
         if aclose is not None:
-            result = aclose()
-            if inspect.isawaitable(result):
-                await result
-            return
-        close = getattr(self.session, "close", None)
-        if close is not None:
-            await asyncio.to_thread(close)
+            if not inspect.iscoroutinefunction(aclose):
+                raise TypeError("session.aclose must be async")
+            await aclose()
 
     async def _request_with_retries(
         self,
@@ -238,7 +205,7 @@ class KhoaHttp:
             await self._bucket.acquire()
             try:
                 response = await self._request_once(url, request_params)
-            except (httpx.HTTPError, requests.exceptions.RequestException) as exc:
+            except httpx.HTTPError as exc:
                 message = _redact_secret(str(exc), service_key)
                 last_error = KhoaRequestError(
                     f"HTTP transport error: {message}",
@@ -265,17 +232,22 @@ class KhoaHttp:
 
     async def _request_once(self, url: str, params: Mapping[str, Any]) -> ResponseLike:
         if self.session is not None:
-            result = self.session.get(url, params=params, timeout=self.timeout)
-            if inspect.isawaitable(result):
-                return await result
-            return result
+            if isinstance(self.session, httpx.AsyncClient):
+                return await send_after_token(
+                    self.session,
+                    self.session.build_request("GET", url, params=params, timeout=self.timeout),
+                    self._bucket,
+                )
+            return await self.session.get(url, params=params, timeout=self.timeout)
 
         async with httpx.AsyncClient(
             headers={"User-Agent": DEFAULT_USER_AGENT},
             timeout=self.timeout,
             follow_redirects=True,
         ) as client:
-            return await client.get(url, params=params)
+            return await send_after_token(
+                client, client.build_request("GET", url, params=params), self._bucket
+            )
 
 
 def _retry_wait(attempt: int) -> float:

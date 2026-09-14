@@ -38,7 +38,7 @@ class FakePortalSession:
         self.response = response
         self.calls: list[dict[str, Any]] = []
 
-    def post(
+    async def post(
         self,
         url: str,
         *,
@@ -62,7 +62,9 @@ class FakeVworldClient:
         self.payload = payload
         self.calls: list[dict[str, Any]] = []
 
-    def reverse_geocode_latlon(self, lat: float, lon: float, **kwargs: Any) -> Mapping[str, Any]:
+    async def reverse_geocode_latlon(
+        self, lat: float, lon: float, **kwargs: Any
+    ) -> Mapping[str, Any]:
         self.calls.append({"lat": lat, "lon": lon, "kwargs": dict(kwargs)})
         return self.payload
 
@@ -151,7 +153,7 @@ async def test_afetch_observatory_list_uses_nonstandard_portal_endpoint():
 
 
 @pytest.mark.asyncio
-async def test_afetch_observatory_list_can_enrich_address_from_sync_vworld_client():
+async def test_afetch_observatory_list_can_enrich_address_from_async_vworld_client():
     session = FakePortalSession(
         FakePortalResponse(
             {
@@ -210,9 +212,7 @@ def test_get_beach_observatories_returns_bundled_address_fields():
     assert haeundae.detail_address
     assert haeundae.address_source == "vworld"
     assert all(
-        len(item.road_address_code) == 26
-        for item in observatories
-        if item.road_address_code
+        len(item.road_address_code) == 26 for item in observatories if item.road_address_code
     )
 
 
@@ -292,7 +292,7 @@ async def test_afetch_openapi_info_retries_transient_status(monkeypatch):
         def __init__(self) -> None:
             self.calls = 0
 
-        def post(
+        async def post(
             self,
             url: str,
             *,

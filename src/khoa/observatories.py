@@ -16,13 +16,15 @@ import json
 import math
 import re
 import zlib
-from collections.abc import Awaitable, Mapping
+from collections.abc import Mapping
 from os import PathLike
 from typing import Any, Final, Protocol, cast
 
 import httpx
 
 from ._http import DEFAULT_USER_AGENT, TRANSIENT_STATUSES
+from ._httpx import send_after_token
+from ._ratelimit import AsyncTokenBucket
 from .exceptions import KhoaParseError, KhoaRequestError, KhoaServerError
 from .models import Observatory
 
@@ -65,33 +67,24 @@ class PortalResponseLike(Protocol):
 
 
 class PortalSessionLike(Protocol):
-    """KHOA 포털 AJAX 호출에 필요한 최소 세션 프로토콜.
+    """KHOA 포털 AJAX 호출에 필요한 비동기 세션 프로토콜."""
 
-    동기 세션(예: `requests.Session`)과 async 세션 모두 지원하기 위해
-    `post()`가 응답 또는 응답의 Awaitable을 반환할 수 있게 합니다.
-    """
-
-    def post(
+    async def post(
         self,
         url: str,
         *,
         data: Mapping[str, Any],
         headers: Mapping[str, str],
         timeout: float,
-    ) -> PortalResponseLike | Awaitable[PortalResponseLike]: ...
+    ) -> PortalResponseLike: ...
 
 
 class VworldReverseGeocoderLike(Protocol):
-    """VWorld 역지오코딩 클라이언트에 필요한 최소 프로토콜.
+    """VWorld 비동기 역지오코딩 클라이언트에 필요한 최소 프로토콜."""
 
-    동기 클라이언트와 async 클라이언트(`AsyncVworldClient`) 모두 지원하기
-    위해 `reverse_geocode_latlon()`이 결과 또는 결과의 Awaitable을 반환할
-    수 있게 합니다.
-    """
-
-    def reverse_geocode_latlon(
+    async def reverse_geocode_latlon(
         self, lat: float, lon: float, **kwargs: Any
-    ) -> Mapping[str, Any] | Awaitable[Mapping[str, Any]]:
+    ) -> Mapping[str, Any]:
         """WGS84 위도/경도 좌표를 VWorld 주소 응답으로 변환합니다."""
 
         ...
@@ -492,9 +485,17 @@ async def afetch_openapi_info(
     timeout: float = 10.0,
     url: str = KHOA_OPENAPI_INFO_URL,
     retries: int = 3,
+    max_rps: float = 5.0,
+    rate_limiter: AsyncTokenBucket | None = None,
 ) -> dict[str, Any]:
-    """비표준 AJAX 엔드포인트에서 KHOA 포털 OpenAPI 상세 JSON을 비동기로 가져옵니다."""
+    """KHOA 포털 상세 JSON을 조회한다. 동시 조회에는 같은 rate_limiter를 전달한다.
 
+    rate_limiter를 주면 해당 버킷의 설정을 사용하고, 없으면 max_rps로 만든다.
+    """
+
+    if session is not None and not inspect.iscoroutinefunction(session.post):
+        raise TypeError("session.post must be async")
+    bucket = rate_limiter if rate_limiter is not None else AsyncTokenBucket(max_rps)
     text_id = str(api_id)
     attempts = max(1, retries + 1)
     headers = {
@@ -502,12 +503,14 @@ async def afetch_openapi_info(
         "Referer": f"{KHOA_OPENAPI_DETAIL_URL}?id={text_id}",
     }
     for attempt in range(attempts):
+        await bucket.acquire()
         response = await _portal_post(
             session,
             url,
             data={"id": text_id},
             headers=headers,
             timeout=timeout,
+            rate_limiter=bucket,
         )
         if response.status_code in TRANSIENT_STATUSES and attempt < attempts - 1:
             await asyncio.sleep(min(8.0, 2.0**attempt))
@@ -531,17 +534,25 @@ async def _portal_post(
     data: Mapping[str, Any],
     headers: Mapping[str, str],
     timeout: float,
+    rate_limiter: AsyncTokenBucket,
 ) -> PortalResponseLike:
     if session is not None:
-        result = session.post(url, data=data, headers=headers, timeout=timeout)
-        if inspect.isawaitable(result):
-            return await result
-        return result
+        if isinstance(session, httpx.AsyncClient):
+            response = await send_after_token(
+                session,
+                session.build_request("POST", url, data=data, headers=headers, timeout=timeout),
+                rate_limiter,
+            )
+            return cast(PortalResponseLike, response)
+        return await session.post(url, data=data, headers=headers, timeout=timeout)
     async with httpx.AsyncClient(
         headers={"User-Agent": DEFAULT_USER_AGENT},
         follow_redirects=True,
     ) as client:
-        response = await client.post(url, data=data, headers=headers, timeout=timeout)
+        response = await send_after_token(
+            client, client.build_request("POST", url, data=data, headers=headers, timeout=timeout),
+            rate_limiter,
+        )
         return cast(PortalResponseLike, response)
 
 
@@ -550,6 +561,8 @@ async def afetch_observatory_list(
     *,
     session: PortalSessionLike | None = None,
     timeout: float = 10.0,
+    max_rps: float = 5.0,
+    rate_limiter: AsyncTokenBucket | None = None,
     include_address: bool = False,
     vworld_client: VworldReverseGeocoderLike | None = None,
     vworld_api_key: str | None = None,
@@ -558,7 +571,9 @@ async def afetch_observatory_list(
 ) -> tuple[Observatory, ...]:
     """KHOA 비표준 OpenAPI 상세 엔드포인트에서 관측소 목록을 비동기로 가져옵니다."""
 
-    payload = await afetch_openapi_info(api_id, session=session, timeout=timeout)
+    payload = await afetch_openapi_info(
+        api_id, session=session, timeout=timeout, max_rps=max_rps, rate_limiter=rate_limiter
+    )
     rows = payload.get("observatoryList")
     if not isinstance(rows, list):
         raise KhoaParseError(
@@ -583,6 +598,8 @@ async def afetch_beach_observatories(
     *,
     session: PortalSessionLike | None = None,
     timeout: float = 10.0,
+    max_rps: float = 5.0,
+    rate_limiter: AsyncTokenBucket | None = None,
     include_address: bool = False,
     vworld_client: VworldReverseGeocoderLike | None = None,
     vworld_api_key: str | None = None,
@@ -595,6 +612,8 @@ async def afetch_beach_observatories(
         BEACH_OPENAPI_ID,
         session=session,
         timeout=timeout,
+        max_rps=max_rps,
+        rate_limiter=rate_limiter,
         include_address=include_address,
         vworld_client=vworld_client,
         vworld_api_key=vworld_api_key,
@@ -649,6 +668,8 @@ def _resolve_vworld_client(
     timeout: float,
 ) -> VworldReverseGeocoderLike:
     if vworld_client is not None:
+        if not inspect.iscoroutinefunction(vworld_client.reverse_geocode_latlon):
+            raise TypeError("vworld_client.reverse_geocode_latlon must be async")
         return vworld_client
     try:
         module = importlib.import_module("vworld")
@@ -684,13 +705,9 @@ def _resolve_vworld_client(
 async def _aclose_vworld_client(client: VworldReverseGeocoderLike) -> None:
     aclose = getattr(client, "aclose", None)
     if aclose is not None:
-        result = aclose()
-        if inspect.isawaitable(result):
-            await result
-        return
-    close = getattr(client, "close", None)
-    if close is not None:
-        await asyncio.to_thread(close)
+        if not inspect.iscoroutinefunction(aclose):
+            raise TypeError("vworld_client.aclose must be async")
+        await aclose()
 
 
 async def _alookup_vworld_address_fields(
@@ -711,17 +728,13 @@ async def _alookup_vworld_address_fields(
         search_offsets_degrees,
     ):
         try:
-            result = client.reverse_geocode_latlon(
+            payload = await client.reverse_geocode_latlon(
                 latitude,
                 longitude,
                 type="both",
                 zipcode=True,
                 simple=False,
             )
-            if inspect.isawaitable(result):
-                payload = await result
-            else:
-                payload = result
         except Exception as exc:
             if _is_vworld_not_found(exc):
                 continue

@@ -260,3 +260,26 @@ facade는 실질적인 이점 없이 유지보수 비용만 더했다. 하나의
 `docs/testing.md`, `AGENTS.md`의 사용 예시를 전부 async로 갱신했다.
 `tests/` 전체의 sync 호출을 `@pytest.mark.asyncio` + `a` 접두 메서드
 호출로 다시 작성했다. `CHANGELOG.md`에 breaking change로 기록했다.
+
+## D-008: 취소에 안전한 공통 토큰 버킷
+
+- 상태: accepted
+- 날짜: 2026-09-14
+- 결정자: Codex
+
+### 컨텍스트
+
+자매 라이브러리의 TPS 의미가 다르고 소수 TPS·취소 경합에서 진행이 멈추는 문제가 있었다.
+사용자는 async-only와 동일한 토큰 버킷을 요구했다.
+
+### 결정
+
+외부 런타임 의존성을 추가하지 않고 같은 `AsyncTokenBucket` 소스를 패키지 내부에 둔다.
+`asyncio.Lock`을 충전 대기까지 보유하여 FIFO와 취소 처리를 맡기고 별도 timer 큐를 없앤다.
+초당 충전량과 burst 용량을 구분하고 명시적으로 한 이벤트 루프에서만 사용한다.
+ODMI 재시도별 토큰 과금을 유지하고 포털 함수에 max_rps와 공유 rate_limiter를 추가했다. 동기 HTTP/VWorld 세션 주입을 거부하고 requests 의존성을 제거했다.
+
+### 결과
+
+세부 계약과 회귀 테스트는 `docs/async-tps.md`에 기록한다.
+독립 리뷰 2건 및 live E2E 성공을 확인한 뒤 PR로 머지한다.

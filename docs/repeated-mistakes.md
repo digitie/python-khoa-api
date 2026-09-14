@@ -55,3 +55,10 @@ Get-Content -Path docs/testing.md -Raw -Encoding UTF8
 - KHOA/data.go.kr 응답의 `items.item`은 단일 dict 또는 list일 수 있습니다.
 - 단일 item 응답을 list로 단정하지 말고 클라이언트 경계에서 정규화합니다.
 - body-level `resultCode` 실패를 빈 성공 응답처럼 반환하지 않습니다.
+
+## TPS가 낮거나 요청이 취소될 때 대기열이 멈추는 문제
+
+- 증상: 1 TPS 미만 설정이나 동시 취소 후 요청이 끝나지 않는다.
+- 원인: 용량을 1 미만으로 제한하거나 이미 취소된 Future를 timer에서 완료시켰다.
+- 규칙: 최소 용량 1, 유한한 양수 TPS, 취소 가능한 FIFO lock으로 토큰을 배분한다.
+- 가드레일: `tests/test_ratelimit.py`, `tests/test_tps_requests.py`.

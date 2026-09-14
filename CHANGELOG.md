@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+### TPS 제어 변경
+
+- 공통 `AsyncTokenBucket`으로 FIFO·취소·유한한 수치 검증·1 TPS 미만 설정을 지원한다.
+- ODMI 재시도별 토큰 과금을 유지하고 포털 함수에 max_rps와 공유 rate_limiter를 추가했다. 동기 HTTP/VWorld 세션 주입을 거부하고 requests 의존성을 제거했다.
+- 사용법과 범위: `docs/async-tps.md`.
+
 ### Added
 
 - `LICENSE`(GPL-3.0-or-later 전문)를 추가했습니다.
