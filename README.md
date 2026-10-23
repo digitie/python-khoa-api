@@ -392,3 +392,8 @@ data.go.kr가 HTTP 403을 반환하면 게이트웨이에는 도달했지만 해
 
 `max_rps`로 초당 충전량을 지정한다. 소수 TPS·burst·취소 동작과
 공유 범위는 [비동기 TPS 제어](docs/async-tps.md)를 참고한다.
+
+## 저장 원문의 오프라인 재해석
+
+`parse_beach_index_place`은 기존 HTTP client와 같은 파서의 공개 함수다.
+[사용법과 단일 행/장소 신뢰 경계](docs/raw-replay.md)를 따른다.
