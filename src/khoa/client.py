@@ -1103,7 +1103,7 @@ def _finish_beach_index_place_page(
     observatories: dict[_BeachIndexKey, Observatory],
 ) -> Page[BeachIndexPlace]:
     items = tuple(
-        _beach_index_place_from_rows(observatories[key], rows)
+        parse_beach_index_place(observatories[key], rows)
         for key, rows in groups.items()
     )
     return Page[BeachIndexPlace](
@@ -1301,10 +1301,15 @@ def _merge_beach_index_address(
     )
 
 
-def _beach_index_place_from_rows(
+def parse_beach_index_place(
     observatory: Observatory,
     rows: list[RawRecord],
 ) -> BeachIndexPlace:
+    """선택한 장소의 원문 행들을 기존 DTO로 다시 해석한다.
+
+    observatory는 호출자가 선택한 장소 문맥이다. 이 함수는 행을 재분류하거나
+    장소 일치·전국 응답 완결성·header를 검증하지 않는다. 네트워크 호출은 없다.
+    """
     return BeachIndexPlace(
         id=observatory.id,
         name=observatory.name,

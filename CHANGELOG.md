@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-23 — 원문 재해석 API 공개
+
+기존 파서를 `parse_beach_index_place`로 공개하고 HTTP client도 같은 함수를 사용한다.
+DTO·raw·코드·시각·기존 오류 의미를 유지하며 네트워크 호출은 추가하지 않는다.
+[단일 행/장소 계약과 신뢰 경계](docs/raw-replay.md)를 명시하고 오프라인 회귀를 추가했다.
+
+
 이 프로젝트의 사용자 가시 변경 사항을 기록합니다. 형식은
 [Keep a Changelog](https://keepachangelog.com/ko/1.0.0/)를 따릅니다.
 

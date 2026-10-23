@@ -10,6 +10,7 @@ from .client import (
     AsyncKhoaClient,
     KhoaClient,
     KhoaODMIClient,
+    parse_beach_index_place,
 )
 from .debug import (
     DEFAULT_ASSERTION,
@@ -83,6 +84,7 @@ from .services import (
 )
 
 __all__ = [
+    "parse_beach_index_place",
     "AsyncTokenBucket",
     "DEFAULT_BASE_URL",
     "DEFAULT_ASSERTION",
